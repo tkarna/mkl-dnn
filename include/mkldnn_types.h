@@ -293,6 +293,8 @@ typedef enum {
     mkldnn_sum,
     /** A convolution primitive. */
     mkldnn_convolution,
+    /** A 3D convolution primitive. */
+    mkldnn_convolution3D,
     /** An element-wise primitive. */
     mkldnn_eltwise,
     /** A ReLU primitive, @deprecated. */
