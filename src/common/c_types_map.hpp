@@ -103,6 +103,8 @@ namespace memory_format {
     const memory_format_t x = mkldnn_x;
     const memory_format_t nc = mkldnn_nc;
     const memory_format_t nchw = mkldnn_nchw;
+    const memory_format_t nchwd = mkldnn_nchwd;
+    const memory_format_t oihwd = mkldnn_oihwd;
     const memory_format_t nhwc = mkldnn_nhwc;
     const memory_format_t chwn = mkldnn_chwn;
     const memory_format_t nChw8c = mkldnn_nChw8c;
@@ -149,8 +151,8 @@ namespace padding_kind {
 
 using conv_kind_t = mkldnn_conv_kind_t;
 namespace conv_kind {
-    const conv_kind_t conv_2D = mkldnn_conv2D;
-    const conv_kind_t conv_3D = mkldnn_conv3D;
+    const conv_kind_t conv2D = mkldnn_conv2D;
+    const conv_kind_t conv3D = mkldnn_conv3D;
 }
 
 using engine_kind_t = mkldnn_engine_kind_t;

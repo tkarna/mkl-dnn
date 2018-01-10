@@ -72,6 +72,7 @@ status_t conv_desc_init(convolution_desc_t *conv_desc,
     utils::array_copy(cd.strides, strides, sp_dims);
     utils::array_copy(cd.padding[0], padding_l, sp_dims);
     utils::array_copy(cd.padding[1], padding_r, sp_dims);
+
     if (dilates)
         utils::array_copy(cd.dilates, dilates, sp_dims);
     else
@@ -83,26 +84,52 @@ status_t conv_desc_init(convolution_desc_t *conv_desc,
 
     const int g = with_groups ? weights_desc->dims[0] : 1;
 
-    bool consistency = true
-        && src_desc->ndims == 4
-        && dst_desc->ndims == 4
-        && utils::one_of(weights_desc->ndims, 4, 5)
-        && (with_bias ? bias_desc->ndims == 1 : true)
-        && (with_bias ? bias_desc->dims[0] == dst_desc->dims[1] : true)
-        && src_desc->dims[0] == dst_desc->dims[0]
-        && src_desc->dims[1] == g * weights_desc->dims[with_groups + 1]
-        && dst_desc->dims[1] == g * weights_desc->dims[with_groups + 0];
-    for (int i = 2; i <= 3; ++i)
-    {
-        int src = src_desc->dims[i];
-        int ker = weights_desc->dims[with_groups + i];
-        int dil = cd.dilates[i - 2];
-        int pad = padding_l[i - 2] + padding_r[i - 2];
-        int str = strides[i - 2];
-        int dst = dst_desc->dims[i];
+    bool consistency = true; 
 
-        consistency = consistency &&
-            (src - ((ker - 1) * (dil + 1) + 1) + pad) / str + 1 == dst;
+    if ( conv_kind == conv_kind_t::mkldnn_conv3D ) {
+        consistency = true
+            && src_desc->ndims == 5
+            && dst_desc->ndims == 5
+            && utils::one_of(weights_desc->ndims, 5)
+            && (with_bias ? bias_desc->ndims == 1 : true)
+            && (with_bias ? bias_desc->dims[0] == dst_desc->dims[1] : true)
+            && src_desc->dims[0] == dst_desc->dims[0]
+            && src_desc->dims[1] == g * weights_desc->dims[with_groups + 1]
+            && dst_desc->dims[1] == g * weights_desc->dims[with_groups + 0];
+        for (int i = 2; i <= 4; ++i)
+        {
+            int src = src_desc->dims[i];
+            int ker = weights_desc->dims[with_groups + i];
+            int dil = cd.dilates[i - 2];
+            int pad = padding_l[i - 2] + padding_r[i - 2];
+            int str = strides[i - 2];
+            int dst = dst_desc->dims[i];
+
+            consistency = consistency &&
+                (src - ((ker - 1) * (dil + 1) + 1) + pad) / str + 1 == dst;
+        }
+    } else {
+        consistency = true
+            && src_desc->ndims == 4
+            && dst_desc->ndims == 4
+            && utils::one_of(weights_desc->ndims, 4, 5)
+            && (with_bias ? bias_desc->ndims == 1 : true)
+            && (with_bias ? bias_desc->dims[0] == dst_desc->dims[1] : true)
+            && src_desc->dims[0] == dst_desc->dims[0]
+            && src_desc->dims[1] == g * weights_desc->dims[with_groups + 1]
+            && dst_desc->dims[1] == g * weights_desc->dims[with_groups + 0];
+        for (int i = 2; i <= 3; ++i)
+        {
+            int src = src_desc->dims[i];
+            int ker = weights_desc->dims[with_groups + i];
+            int dil = cd.dilates[i - 2];
+            int pad = padding_l[i - 2] + padding_r[i - 2];
+            int str = strides[i - 2];
+            int dst = dst_desc->dims[i];
+
+            consistency = consistency &&
+                (src - ((ker - 1) * (dil + 1) + 1) + pad) / str + 1 == dst;
+        }
     }
     if (!consistency) return invalid_arguments;
 

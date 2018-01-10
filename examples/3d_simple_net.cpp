@@ -21,7 +21,7 @@
 
 using namespace mkldnn;
 
-void simple_net(){
+void simple_net_3d(){
 
 // 0) Compile current code independently.
 // 1) Defining dimensions.
@@ -37,35 +37,35 @@ void simple_net(){
     auto cpu_engine = engine(engine::cpu, 0);
 
 // Defining dimensions.
-    const int batch = 2;
-    const int in_depth = 5;
-    const int in_height = 6;
-    const int in_width = 4;
+    const int batch = 5;
+    const int in_depth = 6;
+    const int in_height = 7;
+    const int in_width = 9;
 
     const int kernel_depth = 3;
     const int kernel_height = 3;
     const int kernel_width = 3;
 
-    const int out_channels = 2;
-    const int in_channels = 3;
+    const int out_channels = 32;
+    const int in_channels = 4;
 
-    const int out_depth = 11;
-    const int out_height = 13;
-    const int out_width = 9;
+    const int out_depth = 4;
+    const int out_height = 5;
+    const int out_width = 7;
 
 // Dimensions of memory to be allocated 
-    memory::dims conv_src_dims = {batch, in_channels, in_depth, in_height, in_width};
-    memory::dims conv_weights_dims = {out_channels, in_channels, kernel_depth, kernel_height, kernel_width};
-    memory::dims conv_dst_dims = {batch, out_channels, out_depth, out_height, out_width};
+    memory::dims conv_src_dims = {batch, in_channels, in_height, in_width, in_depth};
+    memory::dims conv_weights_dims = {out_channels, in_channels, kernel_height, kernel_width, kernel_depth};
+    memory::dims conv_dst_dims = {batch, out_channels, out_height, out_width, out_depth};
     memory::dims conv_bias_dims = {out_channels};
-    memory::dims conv_strides = {2, 2, 2};
+    memory::dims conv_strides = {1, 1, 1};
     auto conv_padding = {0, 0, 0};
 
 
     // User provided memory - in a vector of 1D format.
     // 1D allocations src, dst, weights and biases.
-    std::vector<float> net_src(batch * in_channels * in_depth * in_height * in_width);
-    std::vector<float> net_dst(batch * out_channels * out_depth * out_height * out_width); 
+    std::vector<float> net_src(batch * in_channels * in_height * in_width * in_depth);
+    std::vector<float> net_dst(batch * out_channels * out_height * out_width * out_depth); 
     // Accumulate dimensions for weights and bias 
     // And allocate vectors for those. 
     std::vector<float> conv_weights(std::accumulate(conv_weights_dims.begin(),
@@ -75,7 +75,7 @@ void simple_net(){
 
     /* create memory for user data */
     // src, weights and bias.
-    auto conv_user_src_memory = memory({{{conv_src_dims}, memory::data_type::f32, memory::format::nchwd}, cpu_engine}, net_src.data());
+    auto conv_user_src_memory = memory({{{conv_src_dims}, memory::data_type::f32, memory::format::nchwd}, cpu_engine}, net_src.data());    
     auto conv_user_weights_memory = memory({{{conv_weights_dims}, memory::data_type::f32, memory::format::oihwd}, cpu_engine}, conv_weights.data());
     auto conv_user_bias_memory = memory({{{conv_bias_dims}, memory::data_type::f32, memory::format::x}, cpu_engine}, conv_bias.data());
 
@@ -88,6 +88,7 @@ void simple_net(){
     auto conv_dst_md = memory::desc({conv_dst_dims}, memory::data_type::f32, memory::format::any);
 
 
+
     /* create a convolution */
     // Pass memory descriptors (metadata) and stride, padding dimensions.
     //
@@ -95,7 +96,7 @@ void simple_net(){
     auto conv_desc = convolution_forward::desc(prop_kind::forward,
         convolution_direct, conv_src_md, conv_weights_md, conv_bias_md,
         conv_dst_md, conv_strides, conv_padding, conv_padding,
-        padding_kind::zero);
+        padding_kind::zero, conv_kind::conv3D);
     // Convolution premitive.
     auto conv_prim_desc =
         convolution_forward::primitive_desc(conv_desc, cpu_engine);
@@ -125,7 +126,7 @@ void simple_net(){
     net.push_back(convolution_forward(conv_prim_desc, conv_src_memory,
         conv_weights_memory, conv_user_bias_memory, conv_dst_memory));
 
-
+#if 0
     /* AlexNet: relu
      * {batch, 96, 55, 55} -> {batch, 96, 55, 55}
      */
@@ -143,7 +144,6 @@ void simple_net(){
     net.push_back(eltwise_forward(relu_prim_desc, conv_dst_memory,
             relu_dst_memory));
 
-#if 0
     /* AlexNet: lrn
      * {batch, 96, 55, 55} -> {batch, 96, 55, 55}
      * local size: 5
@@ -217,7 +217,7 @@ void simple_net(){
 int main(int argc, char **argv) {
     std::cout << "\nExecuting 3D ref convolution.\n";
     try {
-        simple_net();
+        simple_net_3d();
     }
     catch(error& e) {
         std::cerr << "status: " << e.status << std::endl;
