@@ -248,6 +248,13 @@ typedef enum {
     mkldnn_padding_zero,
 } mkldnn_padding_kind_t;
 
+/** Kinds of padding. Define how to interpret the data in padding regions. */
+typedef enum {
+    /** The data in padding regions is zero. */
+    mkldnn_conv2D,
+    mkldnn_conv3D
+} mkldnn_conv_kind_t;
+
 /** Kinds of propagation. */
 typedef enum {
     /* TODO: suggest renames */
@@ -496,6 +503,7 @@ typedef struct {
     mkldnn_dims_t padding[2];
     /** The kind of padding to use. */
     mkldnn_padding_kind_t padding_kind;
+    mkldnn_conv_kind_t conv_kind;
     /** The accumulator data type. Initialized automatically. */
     mkldnn_data_type_t accum_data_type;
 } mkldnn_convolution_desc_t;

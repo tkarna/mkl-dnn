@@ -147,6 +147,12 @@ namespace padding_kind {
     const padding_kind_t padding_zero = mkldnn_padding_zero;
 }
 
+using conv_kind_t = mkldnn_conv_kind_t;
+namespace conv_kind {
+    const conv_kind_t conv_2D = mkldnn_conv2D;
+    const conv_kind_t conv_3D = mkldnn_conv3D;
+}
+
 using engine_kind_t = mkldnn_engine_kind_t;
 namespace engine_kind {
     const engine_kind_t any_engine = mkldnn_any_engine;
@@ -163,6 +169,7 @@ namespace primitive_kind {
     const primitive_kind_t concat_inplace = mkldnn_concat_inplace;
     const primitive_kind_t sum = mkldnn_sum;
     const primitive_kind_t convolution = mkldnn_convolution;
+    const primitive_kind_t convolution3D = mkldnn_convolution3D;
     const primitive_kind_t eltwise = mkldnn_eltwise;
     const primitive_kind_t softmax = mkldnn_softmax;
     const primitive_kind_t pooling = mkldnn_pooling;

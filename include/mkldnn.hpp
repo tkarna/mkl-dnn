@@ -115,6 +115,7 @@ public:
         concat_inplace = mkldnn_concat_inplace,
         sum = mkldnn_sum,
         convolution = mkldnn_convolution,
+        convolution3D = mkldnn_convolution3D,
         eltwise = mkldnn_eltwise,
         relu = mkldnn_relu,
         softmax = mkldnn_softmax,
@@ -227,6 +228,11 @@ enum padding_kind {
     zero = mkldnn_padding_zero
 };
 
+enum conv_kind {
+    conv2D = mkldnn_conv2D,
+    conv3D = mkldnn_conv3D
+};
+
 inline mkldnn_padding_kind_t convert_to_c(padding_kind kind) {
     return static_cast<mkldnn_padding_kind_t>(kind);
 }
@@ -269,6 +275,10 @@ enum algorithm {
 
 inline mkldnn_alg_kind_t convert_to_c(algorithm aalgorithm) {
     return static_cast<mkldnn_alg_kind_t>(aalgorithm);
+}
+
+inline mkldnn_conv_kind_t convert_to_c(conv_kind aconv) {
+    return static_cast<mkldnn_conv_kind_t>(aconv);
 }
 
 enum batch_normalization_flag {
@@ -1084,7 +1094,8 @@ struct convolution_forward: public primitive {
                 const memory::dims strides,
                 const memory::dims padding_l,
                 const memory::dims padding_r,
-                const padding_kind apadding_kind) {
+                const padding_kind apadding_kind,
+                const conv_kind aconv_kind = conv_kind::conv2D ) {
             memory::validate_dims(strides);
             memory::validate_dims(padding_l);
             memory::validate_dims(padding_r);
@@ -1092,7 +1103,8 @@ struct convolution_forward: public primitive {
                         mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
                         &src_desc.data, &weights_desc.data, &bias_desc.data,
                         &dst_desc.data, &strides[0], &padding_l[0], &padding_r[0],
-                        mkldnn::convert_to_c(apadding_kind)),
+                        mkldnn::convert_to_c(apadding_kind),
+                        mkldnn::convert_to_c(aconv_kind)),
                     "could not create a convolution forward descriptor");
         }
         desc(prop_kind aprop_kind, algorithm aalgorithm,
@@ -1102,7 +1114,8 @@ struct convolution_forward: public primitive {
                 const memory::dims strides,
                 const memory::dims padding_l,
                 const memory::dims padding_r,
-                const padding_kind apadding_kind) {
+                const padding_kind apadding_kind, 
+                const conv_kind aconv_kind = conv_kind::conv2D ) {
             memory::validate_dims(strides);
             memory::validate_dims(padding_l);
             memory::validate_dims(padding_r);
@@ -1110,7 +1123,8 @@ struct convolution_forward: public primitive {
                         mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
                         &src_desc.data, &weights_desc.data, nullptr,
                         &dst_desc.data, &strides[0], &padding_l[0], &padding_r[0],
-                        mkldnn::convert_to_c(apadding_kind)),
+                        mkldnn::convert_to_c(apadding_kind),
+                        mkldnn::convert_to_c(aconv_kind) ),
                     "could not create a convolution forward descriptor");
         }
         desc(prop_kind aprop_kind, algorithm aalgorithm,

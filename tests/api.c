@@ -178,7 +178,7 @@ void test2() {
     CHECK(mkldnn_convolution_forward_desc_init(&c3_desc,
                 mkldnn_forward_training, mkldnn_convolution_direct,
                 &c3_src_md, &c3_weights_md, &c3_bias_md, &c3_dst_md,
-                strides, padding, NULL, mkldnn_padding_zero));
+                strides, padding, NULL, mkldnn_padding_zero, mkldnn_conv2D));
     CHECK(mkldnn_primitive_desc_create(&c3_pd, &c3_desc, engine, NULL));
     CHECK(mkldnn_primitive_create(&c3, c3_pd, c3_srcs, c3_dsts));
 

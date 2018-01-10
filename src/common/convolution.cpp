@@ -35,7 +35,8 @@ status_t conv_desc_init(convolution_desc_t *conv_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc,
         const dims_t strides, const dims_t dilates,
         const dims_t padding_l, const dims_t padding_r,
-        padding_kind_t padding_kind) {
+        padding_kind_t padding_kind,
+        conv_kind_t conv_kind ) {
     bool args_ok = true
         && !any_null(conv_desc, src_desc, weights_desc, dst_desc, strides,
                 padding_l)
@@ -115,12 +116,13 @@ status_t mkldnn_convolution_forward_desc_init(convolution_desc_t *conv_desc,
         const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc,
         const dims_t strides, const dims_t padding_l, const dims_t padding_r,
-        padding_kind_t padding_kind) {
+        padding_kind_t padding_kind,
+        conv_kind_t conv_kind ) {
     if (!one_of(prop_kind, forward_training, forward_inference))
         return invalid_arguments;
     return conv_desc_init(conv_desc, prop_kind, alg_kind, src_desc,
             weights_desc, bias_desc, dst_desc, strides, nullptr,
-            padding_l, padding_r, padding_kind);
+            padding_l, padding_r, padding_kind, conv_kind);
 }
 
 status_t mkldnn_dilated_convolution_forward_desc_init(
@@ -134,7 +136,7 @@ status_t mkldnn_dilated_convolution_forward_desc_init(
         return invalid_arguments;
     return conv_desc_init(conv_desc, prop_kind, alg_kind, src_desc,
             weights_desc, bias_desc, dst_desc, strides, dilates,
-            padding_l, padding_r, padding_kind);
+            padding_l, padding_r, padding_kind, conv_kind_t::mkldnn_conv2D);
 }
 
 status_t mkldnn_convolution_backward_data_desc_init(
@@ -145,7 +147,7 @@ status_t mkldnn_convolution_backward_data_desc_init(
         padding_kind_t padding_kind) {
     return conv_desc_init(conv_desc, backward_data, alg_kind, diff_src_desc,
             weights_desc, nullptr, diff_dst_desc, strides, nullptr,
-            padding_l, padding_r, padding_kind);
+            padding_l, padding_r, padding_kind, conv_kind_t::mkldnn_conv2D);
 }
 
 status_t mkldnn_dilated_convolution_backward_data_desc_init(
@@ -156,7 +158,7 @@ status_t mkldnn_dilated_convolution_backward_data_desc_init(
         padding_kind_t padding_kind) {
     return conv_desc_init(conv_desc, backward_data, alg_kind, diff_src_desc,
             weights_desc, nullptr, diff_dst_desc, strides, dilates,
-            padding_l, padding_r, padding_kind);
+            padding_l, padding_r, padding_kind, conv_kind_t::mkldnn_conv2D);
 }
 
 status_t mkldnn_convolution_backward_weights_desc_init(
@@ -168,7 +170,7 @@ status_t mkldnn_convolution_backward_weights_desc_init(
         padding_kind_t padding_kind) {
     return conv_desc_init(conv_desc, backward_weights, alg_kind, src_desc,
             diff_weights_desc, diff_bias_desc, diff_dst_desc, strides,
-            nullptr, padding_l, padding_r, padding_kind);
+            nullptr, padding_l, padding_r, padding_kind, conv_kind_t::mkldnn_conv2D);
 }
 
 status_t mkldnn_dilated_convolution_backward_weights_desc_init(
@@ -180,7 +182,7 @@ status_t mkldnn_dilated_convolution_backward_weights_desc_init(
         padding_kind_t padding_kind) {
     return conv_desc_init(conv_desc, backward_weights, alg_kind, src_desc,
             diff_weights_desc, diff_bias_desc, diff_dst_desc, strides,
-            dilates, padding_l, padding_r, padding_kind);
+            dilates, padding_l, padding_r, padding_kind, conv_kind_t::mkldnn_conv2D);
 }
 
 // vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s

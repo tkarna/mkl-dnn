@@ -581,7 +581,8 @@ mkldnn_status_t MKLDNN_API mkldnn_convolution_forward_desc_init(
         const mkldnn_memory_desc_t *bias_desc,
         const mkldnn_memory_desc_t *dst_desc, const mkldnn_dims_t strides,
         const mkldnn_dims_t padding_l, const mkldnn_dims_t padding_r,
-        mkldnn_padding_kind_t padding_kind);
+        mkldnn_padding_kind_t padding_kind,
+        mkldnn_conv_kind_t conv);
 
 /** Initializes a dilated convolution descriptor @p conv_desc for forward
  * propagation using @p prop_kind (possible values are #mkldnn_forward_training
