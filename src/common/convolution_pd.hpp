@@ -84,23 +84,33 @@ struct _convolution_fwd_pd_t: public primitive_desc_t {
 
     inline int IH() const { return cdesc_().src_desc.dims[2]; }
     inline int IW() const { return cdesc_().src_desc.dims[3]; }
+    inline int ID() const { return cdesc_().src_desc.dims[4]; }
+
     inline int OH() const { return cdesc_().dst_desc.dims[2]; }
     inline int OW() const { return cdesc_().dst_desc.dims[3]; }
+    inline int OD() const { return cdesc_().dst_desc.dims[4]; }
+
     inline int KH() const
     { return cdesc_().weights_desc.dims[2 + with_groups()]; }
     inline int KW() const
     { return cdesc_().weights_desc.dims[3 + with_groups()]; }
+    inline int KD() const
+    { return cdesc_().weights_desc.dims[4 + with_groups()]; }
 
     inline int KSH() const { return cdesc_().strides[0]; }
     inline int KSW() const { return cdesc_().strides[1]; }
+    inline int KSD() const { return cdesc_().strides[2]; }
 
     inline int KDH() const { return cdesc_().dilates[0]; }
     inline int KDW() const { return cdesc_().dilates[1]; }
+    inline int KDD() const { return cdesc_().dilates[2]; }
 
     inline int padT() const { return cdesc_().padding[0][0]; }
     inline int padB() const { return cdesc_().padding[1][0]; }
     inline int padL() const { return cdesc_().padding[0][1]; }
     inline int padR() const { return cdesc_().padding[1][1]; }
+    inline int padD1() const { return cdesc_().padding[0][2]; }
+    inline int padD2() const { return cdesc_().padding[1][2]; }
 
     inline float negative_slope() const;
 

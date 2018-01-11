@@ -50,6 +50,7 @@
 #include "cpu/ref_inner_product.hpp"
 #include "cpu/gemm_inner_product.hpp"
 #include "cpu/jit_uni_inner_product.hpp"
+#include "cpu/ref_convolution3D.hpp"
 
 namespace mkldnn {
 namespace impl {
@@ -226,6 +227,9 @@ static const pd_create_f cpu_impl_list[] = {
     INSTANCE(ref_convolution_relu_t<u8, s8, s32, s32>),
     INSTANCE(ref_convolution_relu_t<u8, s8, s8, s32>),
     INSTANCE(ref_convolution_relu_t<u8, s8, u8, s32>),
+
+
+    INSTANCE(ref_convolution3D_fwd_t<f32>),
     /* eol */
     nullptr,
 };

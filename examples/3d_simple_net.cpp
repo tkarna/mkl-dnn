@@ -38,20 +38,20 @@ void simple_net_3d(){
 
 // Defining dimensions.
     const int batch = 5;
-    const int in_depth = 6;
     const int in_height = 7;
     const int in_width = 9;
-
-    const int kernel_depth = 3;
+    const int in_depth = 6;
+    
     const int kernel_height = 3;
     const int kernel_width = 3;
+    const int kernel_depth = 3;
 
     const int out_channels = 32;
     const int in_channels = 4;
-
-    const int out_depth = 4;
+    
     const int out_height = 5;
     const int out_width = 7;
+    const int out_depth = 4;
 
 // Dimensions of memory to be allocated 
     memory::dims conv_src_dims = {batch, in_channels, in_height, in_width, in_depth};

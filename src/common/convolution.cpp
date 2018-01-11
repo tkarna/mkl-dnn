@@ -50,6 +50,7 @@ status_t conv_desc_init(convolution_desc_t *conv_desc,
     cd.primitive_kind = primitive_kind::convolution;
     cd.prop_kind = prop_kind;
     cd.alg_kind = alg_kind;
+    cd.conv_kind = conv_kind;
 
     cd.diff_src_desc = cd.src_desc = zero_md();
     cd.diff_dst_desc = cd.dst_desc = zero_md();
