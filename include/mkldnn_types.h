@@ -124,6 +124,8 @@ typedef enum {
     mkldnn_nchwd,
     /** 5D data tensor in the @c oihwd format */
     mkldnn_oihwd,
+    /** 6D data tensor in the @c goihwd format */
+    mkldnn_goihwd,
     /** 4D data tensor in the @c nhwc format typically used in TensorFlow. */
     mkldnn_nhwc,
     /** 4D data tensor in the @c chwn format typically used in Neon. */
