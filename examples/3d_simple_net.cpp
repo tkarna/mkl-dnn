@@ -37,7 +37,7 @@ void simple_net_3d(){
     auto cpu_engine = engine(engine::cpu, 0);
 
 // Defining dimensions.
-    const int batch = 5;
+    const int batch = 2;
     const int in_height = 7;
     const int in_width = 9;
     const int in_depth = 6;
@@ -127,6 +127,21 @@ void simple_net_3d(){
         conv_weights_memory, conv_user_bias_memory, conv_dst_memory));
 
     stream(stream::kind::eager).submit(net).wait();
+
+#if 0
+    // Print the output matrix.    
+    for (int mb = 0; mb < batch; ++mb) {
+        for (int oc = 0; oc < out_channels; ++oc) {
+            for (int oh = 0; oh < out_height; ++oh) {
+                for (int ow = 0; ow < out_width; ++ow) {
+                    for (int od = 0; od < out_depth; ++od) {
+                        std::cout <<  conv_dst_memory [0] << " ";                            
+                    }
+                }
+            }
+        }
+    }
+#endif
 
 }
 
