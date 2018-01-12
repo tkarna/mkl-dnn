@@ -135,8 +135,8 @@ void _ref_convolution3D_fwd_t<with_relu, src_type, wei_type, dst_type, acc_type>
         }
     }
 
-    // Print the output matrix.
-    
+#if 0
+    // Print the output matrix.    
     for (int mb = 0; mb < MB; ++mb) {
         for (int oc = 0; oc < OC; ++oc) {
             for (int oh = 0; oh < OH; ++oh) {
@@ -152,6 +152,7 @@ void _ref_convolution3D_fwd_t<with_relu, src_type, wei_type, dst_type, acc_type>
         }
         std::cout << "\n";
     }
+#endif
     
 }
 

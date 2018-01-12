@@ -128,18 +128,24 @@ void simple_net_3d(){
 
     stream(stream::kind::eager).submit(net).wait();
 
-#if 0
+
     // Print the output matrix.    
+    const float *dst_data = (const float *)conv_dst_memory.get_data_handle();
+#if 1
     for (int mb = 0; mb < batch; ++mb) {
         for (int oc = 0; oc < out_channels; ++oc) {
             for (int oh = 0; oh < out_height; ++oh) {
                 for (int ow = 0; ow < out_width; ++ow) {
                     for (int od = 0; od < out_depth; ++od) {
-                        std::cout <<  conv_dst_memory [0] << " ";                            
+                        std::cout <<  dst_data[0] << " ";                            
                     }
+                    std::cout << "\n";
                 }
+                std::cout << "\n";
             }
+            std::cout << "\n";
         }
+        std::cout << "\n";
     }
 #endif
 
