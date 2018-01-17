@@ -70,7 +70,7 @@ protected:
                 CHECK(dst_pd_.set_format(src_pd_.desc()->format));
             if (weights_pd_.desc()->format == any)
                 CHECK(weights_pd_.set_format(this->with_groups() ? goihwd : oihwd));
-        } else {            
+        } else {
             if (src_pd_.desc()->format == any)
                 CHECK(src_pd_.set_format(nchw));
             if (dst_pd_.desc()->format == any)
@@ -79,7 +79,7 @@ protected:
                 CHECK(weights_pd_.set_format(this->with_groups() ? goihw : oihw));
         }
         if (bias_pd_.desc()->format == any)
-            CHECK(bias_pd_.set_format(x));            
+            CHECK(bias_pd_.set_format(x));
         return status::success;
     }
 };

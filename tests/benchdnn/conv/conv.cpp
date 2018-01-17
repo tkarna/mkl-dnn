@@ -400,7 +400,7 @@ inline int init_pd(const prb_t *p, mkldnn_convolution_desc_t &cd,
         DNN_SAFE(mkldnn_dilated_convolution_forward_desc_init(&cd,
                     mkldnn_forward_inference, alg, &src_d, &wei_d,
                     p->dir == FWD_D ? NULL : &bia_d, &dst_d, strides, dilates,
-                    padding, padding_r, mkldnn_padding_zero), WARN);
+                    padding, padding_r, mkldnn_padding_zero, mkldnn_conv2D), WARN);
         break;
     case BWD_D:
         DNN_SAFE(mkldnn_dilated_convolution_backward_data_desc_init(&cd, alg,

@@ -254,9 +254,8 @@ typedef enum {
     mkldnn_padding_zero,
 } mkldnn_padding_kind_t;
 
-/** Kinds of padding. Define how to interpret the data in padding regions. */
+/** Kind of convolution. Define whether to use 2D or 3D convolution. */
 typedef enum {
-    /** The data in padding regions is zero. */
     mkldnn_conv2D,
     mkldnn_conv3D
 } mkldnn_conv_kind_t;
