@@ -46,6 +46,15 @@ if(WIN32)
     set_property(TEST 3d-simple-net-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
 endif()
 
+add_executable(test-convolution-3d-cpp test_convolution_3d.cpp)
+set_property(TARGET test-convolution-3d-cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(test-convolution-3d-cpp ${LIB_NAME})
+add_test(test-convolution-3d-cpp test-convolution-3d-cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      test-convolution-3d-cpp.vcxproj.user @ONLY)
+    set_property(TEST test-convolution-3d-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
 
 add_executable(simple-training-net-c simple_training_net.c)
 set_property(TARGET simple-training-net-c PROPERTY C_STANDARD 99)
