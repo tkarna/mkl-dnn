@@ -705,7 +705,8 @@ mkldnn_status_t simple_net()
     CHECK(mkldnn_convolution_backward_weights_desc_init(
             &conv_bwd_weights_desc, mkldnn_convolution_direct, &conv_bwd_src_md,
             &conv_diff_weights_md, &conv_diff_bias_md, &conv_diff_dst_md,
-            conv_strides, conv_padding, conv_padding, mkldnn_padding_zero));
+            conv_strides, conv_padding, conv_padding, mkldnn_padding_zero,
+            mkldnn_conv2D));
 
     mkldnn_primitive_desc_t conv_bwd_weights_pd;
     CHECK(mkldnn_primitive_desc_create(

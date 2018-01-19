@@ -581,8 +581,7 @@ mkldnn_status_t MKLDNN_API mkldnn_convolution_forward_desc_init(
         const mkldnn_memory_desc_t *bias_desc,
         const mkldnn_memory_desc_t *dst_desc, const mkldnn_dims_t strides,
         const mkldnn_dims_t padding_l, const mkldnn_dims_t padding_r,
-        mkldnn_padding_kind_t padding_kind,
-        mkldnn_conv_kind_t conv);
+        mkldnn_padding_kind_t padding_kind, mkldnn_conv_kind_t conv_kind);
 
 /** Initializes a dilated convolution descriptor @p conv_desc for forward
  * propagation using @p prop_kind (possible values are #mkldnn_forward_training
@@ -604,7 +603,7 @@ mkldnn_status_t MKLDNN_API mkldnn_dilated_convolution_forward_desc_init(
         const mkldnn_memory_desc_t *dst_desc, const mkldnn_dims_t strides,
         const mkldnn_dims_t dilates, const mkldnn_dims_t padding_l,
         const mkldnn_dims_t padding_r, mkldnn_padding_kind_t padding_kind,
-        mkldnn_conv_kind_t conv);
+        mkldnn_conv_kind_t conv_kind);
 
 /** Initializes a convolution descriptor @p conv_desc for backward propagation
  * with respect to data using @p alg_kind, memory descriptors, @p strides, @p
@@ -618,7 +617,7 @@ mkldnn_status_t MKLDNN_API mkldnn_convolution_backward_data_desc_init(
         const mkldnn_memory_desc_t *weights_desc,
         const mkldnn_memory_desc_t *diff_dst_desc, const mkldnn_dims_t strides,
         const mkldnn_dims_t padding_l, const mkldnn_dims_t padding_r,
-        mkldnn_padding_kind_t padding_kind);
+        mkldnn_padding_kind_t padding_kind, mkldnn_conv_kind_t conv_kind);
 
 /** Initializes a dilated convolution descriptor @p conv_desc for backward
  * propagation with respect to data using @p alg_kind, memory descriptors, @p
@@ -632,7 +631,8 @@ mkldnn_status_t MKLDNN_API mkldnn_dilated_convolution_backward_data_desc_init(
         const mkldnn_memory_desc_t *weights_desc,
         const mkldnn_memory_desc_t *diff_dst_desc, const mkldnn_dims_t strides,
         const mkldnn_dims_t dilates, const mkldnn_dims_t padding_l,
-        const mkldnn_dims_t padding_r, mkldnn_padding_kind_t padding_kind);
+        const mkldnn_dims_t padding_r, mkldnn_padding_kind_t padding_kind,
+        mkldnn_conv_kind_t conv_kind);
 
 /** Initializes a convolution descriptor @p conv_desc for backward propagation
  * with respect to weights using @p alg_kind, memory descriptors, @p strides,
@@ -647,7 +647,7 @@ mkldnn_status_t MKLDNN_API mkldnn_convolution_backward_weights_desc_init(
         const mkldnn_memory_desc_t *diff_bias_desc,
         const mkldnn_memory_desc_t *diff_dst_desc, const mkldnn_dims_t strides,
         const mkldnn_dims_t padding_l, const mkldnn_dims_t padding_r,
-        mkldnn_padding_kind_t padding_kind);
+        mkldnn_padding_kind_t padding_kind, mkldnn_conv_kind_t conv_kind);
 
 /** Initializes a convolution descriptor @p conv_desc for backward propagation
  * with respect to weights using @p alg_kind, memory descriptors, @p strides,
@@ -663,7 +663,8 @@ mkldnn_dilated_convolution_backward_weights_desc_init(
         const mkldnn_memory_desc_t *diff_bias_desc,
         const mkldnn_memory_desc_t *diff_dst_desc, const mkldnn_dims_t strides,
         const mkldnn_dims_t dilates, const mkldnn_dims_t padding_l,
-        const mkldnn_dims_t padding_r, mkldnn_padding_kind_t padding_kind);
+        const mkldnn_dims_t padding_r, mkldnn_padding_kind_t padding_kind,
+        mkldnn_conv_kind_t conv_kind);
 
 /** @} */
 

@@ -405,13 +405,13 @@ inline int init_pd(const prb_t *p, mkldnn_convolution_desc_t &cd,
     case BWD_D:
         DNN_SAFE(mkldnn_dilated_convolution_backward_data_desc_init(&cd, alg,
                     &src_d, &wei_d, &dst_d, strides, dilates, padding,
-                    padding_r, mkldnn_padding_zero), WARN);
+                    padding_r, mkldnn_padding_zero, mkldnn_conv2D), WARN);
         break;
     case BWD_W: case BWD_WB:
         DNN_SAFE(mkldnn_dilated_convolution_backward_weights_desc_init(&cd,
                     alg, &src_d, &wei_d, p->dir == BWD_W ? NULL : &bia_d,
                     &dst_d, strides, dilates, padding, padding_r,
-                    mkldnn_padding_zero), WARN);
+                    mkldnn_padding_zero, mkldnn_conv2D), WARN);
         break;
     default: DNN_SAFE(mkldnn_invalid_arguments, CRIT);
     }
