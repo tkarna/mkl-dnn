@@ -59,9 +59,9 @@ bool assert_convolution(std::vector<float>& kernel, std::vector<float>& correct_
     const int out_depth = 2;
 
     // Dimensions of memory to be allocated
-    memory::dims conv_src_dims = {batch, in_channels, in_height, in_width, in_depth};
-    memory::dims conv_weights_dims = {out_channels, in_channels, kernel_height, kernel_width, kernel_depth};
-    memory::dims conv_dst_dims = {batch, out_channels, out_height, out_width, out_depth};
+    memory::dims conv_src_dims = {batch, in_channels, in_depth, in_height, in_width};
+    memory::dims conv_weights_dims = {out_channels, in_channels, kernel_depth, kernel_height, kernel_width};
+    memory::dims conv_dst_dims = {batch, out_channels, out_depth, out_height, out_width};
     memory::dims conv_bias_dims = {out_channels};
     memory::dims conv_strides = {1, 1, 1};
     auto conv_padding = {0, 0, 0};
