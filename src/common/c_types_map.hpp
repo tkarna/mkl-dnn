@@ -106,7 +106,7 @@ namespace memory_format {
     const memory_format_t ncdhw = mkldnn_ncdhw;
     const memory_format_t ndhwc = mkldnn_ndhwc;
     const memory_format_t oidhw = mkldnn_oidhw;
-    const memory_format_t goihwd = mkldnn_goidhw;
+    const memory_format_t goidhw = mkldnn_goidhw;
     const memory_format_t nhwc = mkldnn_nhwc;
     const memory_format_t chwn = mkldnn_chwn;
     const memory_format_t nChw8c = mkldnn_nChw8c;
