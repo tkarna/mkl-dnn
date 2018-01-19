@@ -81,14 +81,14 @@ void _ref_convolution3D_fwd_t<with_relu, src_type, wei_type, dst_type, acc_type>
             for (int kd = 0; kd < KD; ++kd) {
                 for (int kh = 0; kh < KH; ++kh) {
                     for (int kw = 0; kw < KW; ++kw) {
-                    
+
                         const int id = od * KSD - padD1 + kd * (1 + KDD);
                         const int ih = oh * KSH - padT  + kh * (1 + KDH);
                         const int iw = ow * KSW - padL  + kw * (1 + KDW);
-                        
+
                         if (id < 0 || id >= ID) continue;
                         if (ih < 0 || ih >= IH) continue;
-                        if (iw < 0 || iw >= IW) continue;                        
+                        if (iw < 0 || iw >= IW) continue;
 
                         d += (acc_data_t)src[src_d.off(mb, g*IC + ic, id, ih, iw)]
                             * (with_groups
@@ -120,7 +120,7 @@ void _ref_convolution3D_fwd_t<with_relu, src_type, wei_type, dst_type, acc_type>
             for (int oc = 0; oc < OC; ++oc) {
                 for (int od = 0; od < OD; ++od) {
                     for (int oh = 0; oh < OH; ++oh) {
-                        for (int ow = 0; ow < OW; ++ow) {                        
+                        for (int ow = 0; ow < OW; ++ow) {
                             acc_data_t a = bias
                                 ? get_bias(bias_d.off(g*OC + oc)) : (acc_data_t)0;
                             ker(a, g, mb, oc, od, oh, ow);

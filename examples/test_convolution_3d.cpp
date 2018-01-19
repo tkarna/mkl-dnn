@@ -194,15 +194,14 @@ bool test_asymmetric() {
     kernel[22] = 2;
     kernel[24] = 1;
     std::vector<float> output(18, 0);
-    output = { 94, 148,
-              153, 240,
-              212, 332,
-              141, 220,
-              229, 356,
-              317, 492,
-              188, 292,
-              305, 472,
-              422, 652};
+    output = {
+        94, 148, 202,
+        153, 240, 327,
+        212, 332, 452,
+        141, 220, 299,
+        229, 356, 483,
+        317, 492, 667
+    };
     return assert_convolution(kernel, output);
 }
 
@@ -210,8 +209,8 @@ int main(int argc, char **argv) {
     bool success = true;
     try {
         success = success
-            && test_simple();
-            // && test_asymmetric(); NOTE omit for now
+            && test_simple()
+            && test_asymmetric();
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
         } else {
