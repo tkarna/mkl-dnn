@@ -127,10 +127,18 @@ status_t fill_ncdhw(memory_desc_t &md) {
     return fill_nonblocked(md, perm);
 }
 
+
 status_t fill_oidhw(memory_desc_t &md) {
     if (md.ndims != 5) return invalid_arguments;
 
     const int perm[5] = {0, 1, 2, 3, 4};
+    return fill_nonblocked(md, perm);
+}
+
+status_t fill_ndhwc(memory_desc_t &md) {
+    if (md.ndims != 5) return invalid_arguments;
+
+    const int perm[5] = {0, 2, 3, 4, 1};
     return fill_nonblocked(md, perm);
 }
 
@@ -469,6 +477,7 @@ status_t memory_desc_wrapper::compute_blocking(memory_desc_t &memory_desc)
     case nc: return fill_nc(memory_desc);
     case nchw: return fill_nchw(memory_desc);
     case ncdhw: return fill_ncdhw(memory_desc);
+    case ndhwc: return fill_ndhwc(memory_desc);
     case oidhw: return fill_oidhw(memory_desc);
     case nhwc: return fill_nhwc(memory_desc);
     case chwn: return fill_chwn(memory_desc);

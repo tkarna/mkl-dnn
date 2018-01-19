@@ -570,6 +570,7 @@ struct memory: public primitive  {
         nc = mkldnn_nc,
         nchw = mkldnn_nchw,        
         ncdhw = mkldnn_ncdhw,
+        ndhwc = mkldnn_ndhwc,
         oidhw = mkldnn_oidhw,
         goidhw = mkldnn_goidhw,
         nhwc = mkldnn_nhwc,

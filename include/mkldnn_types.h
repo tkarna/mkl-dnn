@@ -122,6 +122,7 @@ typedef enum {
     mkldnn_nchw,
     /** 5D data tensor in the @c nchwd format */    
     mkldnn_ncdhw,
+    mkldnn_ndhwc,
     /** 5D data tensor in the @c oihwd format */
     mkldnn_oidhw,
     /** 6D data tensor in the @c goihwd format */
