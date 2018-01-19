@@ -65,11 +65,11 @@ protected:
 
         if ( _cpu_convolution_fwd_pd_t::cdesc_().conv_kind == conv_kind_t::mkldnn_conv3D ) {
             if (src_pd_.desc()->format == any)
-                CHECK(src_pd_.set_format(nchwd));
+                CHECK(src_pd_.set_format(ncdhw));
             if (dst_pd_.desc()->format == any)
                 CHECK(dst_pd_.set_format(src_pd_.desc()->format));
             if (weights_pd_.desc()->format == any)
-                CHECK(weights_pd_.set_format(this->with_groups() ? goihwd : oihwd));
+                CHECK(weights_pd_.set_format(this->with_groups() ? goihwd : oidhw));
         } else {            
             if (src_pd_.desc()->format == any)
                 CHECK(src_pd_.set_format(nchw));

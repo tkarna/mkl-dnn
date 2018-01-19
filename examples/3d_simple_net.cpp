@@ -54,9 +54,9 @@ void simple_net_3d(){
     const int out_depth = 4;
 
 // Dimensions of memory to be allocated 
-    memory::dims conv_src_dims = {batch, in_channels, in_height, in_width, in_depth};
-    memory::dims conv_weights_dims = {out_channels, in_channels, kernel_height, kernel_width, kernel_depth};
-    memory::dims conv_dst_dims = {batch, out_channels, out_height, out_width, out_depth};
+    memory::dims conv_src_dims = {batch, in_channels, in_depth, in_height, in_width};
+    memory::dims conv_weights_dims = {out_channels, in_channels, kernel_depth, kernel_height, kernel_width};
+    memory::dims conv_dst_dims = {batch, out_channels, out_depth, out_height, out_width };
     memory::dims conv_bias_dims = {out_channels};
     memory::dims conv_strides = {1, 1, 1};
     auto conv_padding = {0, 0, 0};
@@ -75,17 +75,17 @@ void simple_net_3d(){
 
     /* create memory for user data */
     // src, weights and bias.
-    auto conv_user_src_memory = memory({{{conv_src_dims}, memory::data_type::f32, memory::format::nchwd}, cpu_engine}, net_src.data());    
-    auto conv_user_weights_memory = memory({{{conv_weights_dims}, memory::data_type::f32, memory::format::oihwd}, cpu_engine}, conv_weights.data());
+    auto conv_user_src_memory = memory({{{conv_src_dims}, memory::data_type::f32, memory::format::ncdhw}, cpu_engine}, net_src.data());    
+    auto conv_user_weights_memory = memory({{{conv_weights_dims}, memory::data_type::f32, memory::format::oidhw}, cpu_engine}, conv_weights.data());
     auto conv_user_bias_memory = memory({{{conv_bias_dims}, memory::data_type::f32, memory::format::x}, cpu_engine}, conv_bias.data());
 
     // Metadata- These are only descriptors. Not real allocation of data.
     /* create memory descriptors for convolution data w/ no specified format */
     // src, bias, weights, and dst.
-    auto conv_src_md = memory::desc({conv_src_dims}, memory::data_type::f32, memory::format::nchwd);
+    auto conv_src_md = memory::desc({conv_src_dims}, memory::data_type::f32, memory::format::ncdhw);
     auto conv_bias_md = memory::desc({conv_bias_dims}, memory::data_type::f32, memory::format::x);
-    auto conv_weights_md = memory::desc({conv_weights_dims}, memory::data_type::f32, memory::format::oihwd);
-    auto conv_dst_md = memory::desc({conv_dst_dims}, memory::data_type::f32, memory::format::nchwd);
+    auto conv_weights_md = memory::desc({conv_weights_dims}, memory::data_type::f32, memory::format::oidhw);
+    auto conv_dst_md = memory::desc({conv_dst_dims}, memory::data_type::f32, memory::format::ncdhw);
 
 
 

@@ -1,3 +1,7 @@
+# Helpful links
+#https://stackoverflow.com/questions/34619177/what-does-tf-nn-conv2d-do-in-tensorflow
+#https://www.tensorflow.org/api_docs/python/tf/nn/conv3d
+
 import tensorflow as tf
 
 # NDHWC

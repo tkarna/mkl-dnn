@@ -120,12 +120,12 @@ typedef enum {
     mkldnn_nc,
     /** 4D data tensor in the @c nchw format typically used in Caffe. */
     mkldnn_nchw,
-    /** 5D data tensor in the @c nchwd format */
-    mkldnn_nchwd,
+    /** 5D data tensor in the @c nchwd format */    
+    mkldnn_ncdhw,
     /** 5D data tensor in the @c oihwd format */
-    mkldnn_oihwd,
+    mkldnn_oidhw,
     /** 6D data tensor in the @c goihwd format */
-    mkldnn_goihwd,
+    mkldnn_goidhw,
     /** 4D data tensor in the @c nhwc format typically used in TensorFlow. */
     mkldnn_nhwc,
     /** 4D data tensor in the @c chwn format typically used in Neon. */

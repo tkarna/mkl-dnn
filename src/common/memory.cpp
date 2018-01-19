@@ -61,8 +61,8 @@ status_t mkldnn_memory_desc_init(memory_desc_t *memory_desc, int ndims,
     case x:
     case nc:
     case nchw:
-    case nchwd:
-    case oihwd:
+    case ncdhw:
+    case oidhw:
     case nhwc:
     case chwn:
     case nChw8c:
