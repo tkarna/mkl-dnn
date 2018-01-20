@@ -116,11 +116,11 @@ protected:
 
         if (cpu_convolution_bwd_data_pd_t::desc()->conv_kind == conv_kind_t::mkldnn_conv3D) {
             if (diff_src_pd_.desc()->format == any)
-                CHECK(diff_src_pd_.set_format(nchwd));
+                CHECK(diff_src_pd_.set_format(ncdhw));
             if (diff_dst_pd_.desc()->format == any)
                 CHECK(diff_dst_pd_.set_format(diff_src_pd_.desc()->format));
             if (weights_pd_.desc()->format == any)
-                CHECK(weights_pd_.set_format(this->with_groups() ? goihwd : oihwd));
+                CHECK(weights_pd_.set_format(this->with_groups() ? goidhw : oidhw));
         } else {
             if (diff_src_pd_.desc()->format == any)
                 CHECK(diff_src_pd_.set_format(nchw));
@@ -168,12 +168,12 @@ protected:
 
         if (cpu_convolution_bwd_weights_pd_t::desc()->conv_kind == conv_kind_t::mkldnn_conv3D) {
             if (src_pd_.desc()->format == any)
-                CHECK(src_pd_.set_format(nchwd));
+                CHECK(src_pd_.set_format(ncdhw));
             if (diff_dst_pd_.desc()->format == any)
-                CHECK(diff_dst_pd_.set_format(nchwd));
+                CHECK(diff_dst_pd_.set_format(ncdhw));
             if (diff_weights_pd_.desc()->format == any)
                 CHECK(diff_weights_pd_.set_format(
-                            this->with_groups() ? goihwd : oihwd));
+                            this->with_groups() ? goidhw : oidhw));
         } else {
             if (src_pd_.desc()->format == any)
                 CHECK(src_pd_.set_format(nchw));

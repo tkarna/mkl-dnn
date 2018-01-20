@@ -178,30 +178,30 @@ void ref_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_dst_type,
     const int padL = conf_.padL();
     const int padD1 = conf_.padD1();
 
-    auto ker = [=](acc_data_t &d, int g, int mb, int ic, int ih, int iw, int id) {
+    auto ker = [=](acc_data_t &d, int g, int mb, int ic, int id, int ih, int iw) {
         for (int oc = 0; oc < OC; ++oc) {
-            for (int kh = 0; kh < KH; ++kh) {
-                for (int kw = 0; kw < KW; ++kw) {
-                    for (int kd = 0; kd < KD; ++kd) {
+            for (int kd = 0; kd < KD; ++kd) {
+                for (int kh = 0; kh < KH; ++kh) {
+                    for (int kw = 0; kw < KW; ++kw) {
                         if (iw + padL < kw * (1 + KDW)
                             || ih + padT < kh * (1 + KDH)
                             || id + padD1 < kd * (1 + KDD))
                             continue;
-                        int ow = iw - kw * (1 + KDW) + padL;
-                        int oh = ih - kh * (1 + KDH) + padT;
                         int od = id - kd * (1 + KDD) + padD1;
+                        int oh = ih - kh * (1 + KDH) + padT;
+                        int ow = iw - kw * (1 + KDW) + padL;
                         if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0)
                             continue;
 
-                        ow /= KSW;
-                        oh /= KSH;
                         od /= KSD;
+                        oh /= KSH;
+                        ow /= KSW;
 
                         if (oh < OH && ow < OW && od < OD) {
                             d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc,
-                                    oh, ow, od)] * (with_groups
-                                        ? weights[weights_d.off(g, oc, ic, kh, kw, kd)]
-                                        : weights[weights_d.off(oc, ic, kh, kw, kd)]);
+                                    od, oh, ow)] * (with_groups
+                                        ? weights[weights_d.off(g, oc, ic, kd, kh, kw)]
+                                        : weights[weights_d.off(oc, ic, kd, kh, kw)]);
                         }
                     }
                 }
@@ -213,12 +213,12 @@ void ref_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_dst_type,
     for (int g = 0; g < G; ++g) {
         for (int mb = 0; mb < MB; ++mb) {
             for (int ic = 0; ic < IC; ++ic) {
-                for (int ih = 0; ih < IH; ++ih) {
-                    for (int iw = 0; iw < IW; ++iw) {
-                        for (int id = 0; id < ID; ++id) {
-                            auto ds_idx = diff_src_d.off(mb, g*IC + ic, ih, iw, id);
+                for (int id = 0; id < ID; ++id) {
+                    for (int ih = 0; ih < IH; ++ih) {
+                        for (int iw = 0; iw < IW; ++iw) {
+                            auto ds_idx = diff_src_d.off(mb, g*IC + ic, id, ih, iw);
                             acc_data_t a = acc_data_t(0);
-                            ker(a, g, mb, ic, ih, iw, id);
+                            ker(a, g, mb, ic, id, ih, iw);
                             diff_src[ds_idx] = saturate<diff_src_data_t>(a);
                         }
                     }
@@ -272,11 +272,11 @@ void ref_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
     const int padL = conf_.padL();
     const int padD1 = conf_.padD1();
 
-    auto ker = [=](acc_data_t &d, int g, int oc, int ic, int kh, int kw, int kd) {
+    auto ker = [=](acc_data_t &d, int g, int oc, int ic, int kd, int kh, int kw) {
         for (int mb = 0; mb < MB; ++mb) {
-            for (int oh = 0; oh < OH; ++oh) {
-                for (int ow = 0; ow < OW; ++ow) {
-                    for (int od = 0; od < OD; ++od) {
+            for (int od = 0; od < OD; ++od) {
+                for (int oh = 0; oh < OH; ++oh) {
+                    for (int ow = 0; ow < OW; ++ow) {
                         if (ow*KSW + kw * (1 + KDW) < padL
                                 || oh*KSH + kh * (1 + KDH) < padT
                                 || od*KSD + kd * (1 + KDD) < padD1
@@ -285,12 +285,12 @@ void ref_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
                                 || od*KSD + kd * (1 + KDD) >= ID + padD1)
                             continue;
 
+                        int id = od*KSD - padD1 + kd * (1 + KDD);
                         int ih = oh*KSH - padT + kh * (1 + KDH);
                         int iw = ow*KSW - padL + kw * (1 + KDW);
-                        int id = od*KSD - padD1 + kd * (1 + KDD);
 
-                        d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, oh,
-                                ow, od)] * src[src_d.off(mb, g*IC + ic, ih, iw, id)];
+                        d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, od,
+                                oh, ow)] * src[src_d.off(mb, g*IC + ic, id, ih, iw)];
                     }
                 }
             }
@@ -299,11 +299,11 @@ void ref_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
 
     auto ker_bias = [=](acc_data_t &d, int g, int oc) {
         for (int mb = 0; mb < MB; ++mb) {
-            for (int oh = 0; oh < OH; ++oh) {
-                for (int ow = 0; ow < OW; ++ow) {
-                    for (int od = 0; od < OD; ++od) {
-                        d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, oh,
-                                ow, od)];
+            for (int od = 0; od < OD; ++od) {
+                for (int oh = 0; oh < OH; ++oh) {
+                    for (int ow = 0; ow < OW; ++ow) {
+                        d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, od,
+                                oh, ow)];
                     }
                 }
             }
@@ -321,15 +321,15 @@ void ref_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
             }
 
             for (int ic = 0; ic < IC; ++ic) {
-                for (int kh = 0; kh < KH; ++kh) {
-                    for (int kw = 0; kw < KW; ++kw) {
-                        for (int kd = 0; kd < KD; ++kd) {
+                for (int kd = 0; kd < KD; ++kd) {
+                    for (int kh = 0; kh < KH; ++kh) {
+                        for (int kw = 0; kw < KW; ++kw) {
                             acc_data_t dw = 0;
-                            ker(dw, g, oc, ic, kh, kw, kd);
+                            ker(dw, g, oc, ic, kd, kh, kw);
 
                             auto idx = with_groups
-                                ? diff_weights_d.off(g, oc, ic, kh, kw, kd)
-                                : diff_weights_d.off(oc, ic, kh, kw, kd);
+                                ? diff_weights_d.off(g, oc, ic, kd, kh, kw)
+                                : diff_weights_d.off(oc, ic, kd, kh, kw);
                             diff_weights[idx] = saturate<diff_wei_data_t>(dw);
                         }
                     }
