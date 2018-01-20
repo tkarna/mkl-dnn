@@ -68,6 +68,43 @@ struct _ref_convolution3D_fwd_t: public cpu_primitive_t {
                 && this->attr()->has_default_values();
             return ok ? status::success : status::unimplemented;
         }
+
+        inline int MB() const { return this->cdesc_().src_desc.dims[0]; }
+
+        inline int IC() const { return this->cdesc_().src_desc.dims[1]; }
+        inline int OC() const { return this->cdesc_().dst_desc.dims[1]; }
+        inline int G() const
+        { return this->with_groups() ? this->cdesc_().weights_desc.dims[0] : 1; }
+
+        inline int ID() const { return this->cdesc_().src_desc.dims[2]; }
+        inline int IH() const { return this->cdesc_().src_desc.dims[3]; }
+        inline int IW() const { return this->cdesc_().src_desc.dims[4]; }
+
+        inline int OD() const { return this->cdesc_().dst_desc.dims[2]; }
+        inline int OH() const { return this->cdesc_().dst_desc.dims[3]; }
+        inline int OW() const { return this->cdesc_().dst_desc.dims[4]; }
+
+        inline int KD() const
+        { return this->cdesc_().weights_desc.dims[2 + this->with_groups()]; }
+        inline int KH() const
+        { return this->cdesc_().weights_desc.dims[3 + this->with_groups()]; }
+        inline int KW() const
+        { return this->cdesc_().weights_desc.dims[4 + this->with_groups()]; }
+
+        inline int KSD() const { return this->cdesc_().strides[0]; }
+        inline int KSH() const { return this->cdesc_().strides[1]; }
+        inline int KSW() const { return this->cdesc_().strides[2]; }
+
+        inline int KDD() const { return this->cdesc_().dilates[0]; }
+        inline int KDH() const { return this->cdesc_().dilates[1]; }
+        inline int KDW() const { return this->cdesc_().dilates[2]; }
+
+        inline int padD1() const { return this->cdesc_().padding[0][0]; }
+        inline int padD2() const { return this->cdesc_().padding[1][0]; }
+        inline int padT() const { return this->cdesc_().padding[0][1]; }
+        inline int padB() const { return this->cdesc_().padding[1][1]; }
+        inline int padL() const { return this->cdesc_().padding[0][2]; }
+        inline int padR() const { return this->cdesc_().padding[1][2]; }
     };
 
     _ref_convolution3D_fwd_t(const pd_t *pd, const input_vector &inputs,
@@ -138,6 +175,41 @@ struct ref_convolution3D_bwd_data_t: public cpu_primitive_t {
                 && this->attr()->has_default_values();
             return ok ? status::success : status::unimplemented;
         }
+
+        inline int MB() const { return this->desc()->diff_src_desc.dims[0]; }
+
+        inline int IC() const { return this->desc()->diff_src_desc.dims[1]; }
+        inline int OC() const { return this->desc()->diff_dst_desc.dims[1]; }
+        inline int G() const
+        { return with_groups() ? this->desc()->weights_desc.dims[0] : 1; }
+
+        inline int ID() const { return this->desc()->diff_src_desc.dims[2]; }
+        inline int IH() const { return this->desc()->diff_src_desc.dims[3]; }
+        inline int IW() const { return this->desc()->diff_src_desc.dims[4]; }
+        inline int OD() const { return this->desc()->diff_dst_desc.dims[2]; }
+        inline int OH() const { return this->desc()->diff_dst_desc.dims[3]; }
+        inline int OW() const { return this->desc()->diff_dst_desc.dims[4]; }
+        inline int KD() const
+        { return this->desc()->weights_desc.dims[2 + with_groups()]; }
+        inline int KH() const
+        { return this->desc()->weights_desc.dims[3 + with_groups()]; }
+        inline int KW() const
+        { return this->desc()->weights_desc.dims[4 + with_groups()]; }
+
+        inline int KSD() const { return this->desc()->strides[0]; }
+        inline int KSH() const { return this->desc()->strides[1]; }
+        inline int KSW() const { return this->desc()->strides[2]; }
+
+        inline int KDD() const { return this->desc()->dilates[0]; }
+        inline int KDH() const { return this->desc()->dilates[1]; }
+        inline int KDW() const { return this->desc()->dilates[2]; }
+
+        inline int padD1() const { return this->desc()->padding[0][0]; }
+        inline int padD2() const { return this->desc()->padding[1][0]; }
+        inline int padT() const { return this->desc()->padding[0][1]; }
+        inline int padB() const { return this->desc()->padding[1][1]; }
+        inline int padL() const { return this->desc()->padding[0][2]; }
+        inline int padR() const { return this->desc()->padding[1][2]; }
     };
 
     ref_convolution3D_bwd_data_t(const pd_t *pd, const input_vector &inputs,
@@ -199,6 +271,40 @@ struct ref_convolution3D_bwd_weights_t: public cpu_primitive_t {
                 && this->attr()->has_default_values();
             return ok ? status::success : status::unimplemented;
         }
+        inline int MB() const { return this->desc()->src_desc.dims[0]; }
+
+        inline int IC() const { return this->desc()->src_desc.dims[1]; }
+        inline int OC() const { return this->desc()->diff_dst_desc.dims[1]; }
+        inline int G() const
+        { return with_groups() ? this->desc()->diff_weights_desc.dims[0] : 1; }
+
+        inline int ID() const { return this->desc()->src_desc.dims[2]; }
+        inline int IH() const { return this->desc()->src_desc.dims[3]; }
+        inline int IW() const { return this->desc()->src_desc.dims[4]; }
+        inline int OD() const { return this->desc()->diff_dst_desc.dims[2]; }
+        inline int OH() const { return this->desc()->diff_dst_desc.dims[3]; }
+        inline int OW() const { return this->desc()->diff_dst_desc.dims[4]; }
+        inline int KD() const
+        { return this->desc()->diff_weights_desc.dims[2 + with_groups()]; }
+        inline int KH() const
+        { return this->desc()->diff_weights_desc.dims[3 + with_groups()]; }
+        inline int KW() const
+        { return this->desc()->diff_weights_desc.dims[4 + with_groups()]; }
+
+        inline int KSD() const { return this->desc()->strides[0]; }
+        inline int KSH() const { return this->desc()->strides[1]; }
+        inline int KSW() const { return this->desc()->strides[2]; }
+
+        inline int KDD() const { return this->desc()->dilates[0]; }
+        inline int KDH() const { return this->desc()->dilates[1]; }
+        inline int KDW() const { return this->desc()->dilates[2]; }
+
+        inline int padD1() const { return this->desc()->padding[0][0]; }
+        inline int padD2() const { return this->desc()->padding[1][0]; }
+        inline int padT() const { return this->desc()->padding[0][1]; }
+        inline int padB() const { return this->desc()->padding[1][1]; }
+        inline int padL() const { return this->desc()->padding[0][2]; }
+        inline int padR() const { return this->desc()->padding[1][2]; }
     };
 
     ref_convolution3D_bwd_weights_t(const pd_t *pd, const input_vector &inputs,
