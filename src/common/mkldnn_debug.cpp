@@ -70,6 +70,7 @@ const char *mkldnn_fmt2str(mkldnn_memory_format_t v) {
     if (v == mkldnn_chwn) return "chwn";
     if (v == mkldnn_nChw8c) return "nChw8c";
     if (v == mkldnn_nChw16c) return "nChw16c";
+    if (v == mkldnn_nCdhw16c) return "nCdhw16c";
     if (v == mkldnn_oi) return "oi";
     if (v == mkldnn_io) return "io";
     if (v == mkldnn_oihw) return "oihw";

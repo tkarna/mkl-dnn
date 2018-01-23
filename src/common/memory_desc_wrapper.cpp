@@ -184,6 +184,16 @@ status_t fill_nChw16c(memory_desc_t &md) {
     return fill_contiguous_blocked(md, block_dims, perm);
 }
 
+status_t fill_nCdhw16c(memory_desc_t &md) {
+    if (md.ndims != 5) return invalid_arguments;
+
+    const dims_t block_dims = {1, 16, 1, 1, 1};
+    const int perm[] = {
+        0, 1, 2, 3, 4,
+        5, 6, 7, 8, 9};
+    return fill_contiguous_blocked(md, block_dims, perm);
+}
+
 status_t fill_oi(memory_desc_t &md) {
     if (md.ndims != 2) return invalid_arguments;
 
@@ -491,6 +501,7 @@ status_t memory_desc_wrapper::compute_blocking(memory_desc_t &memory_desc)
     case chwn: return fill_chwn(memory_desc);
     case nChw8c: return fill_nChw8c(memory_desc);
     case nChw16c: return fill_nChw16c(memory_desc);
+    case nCdhw16c: return fill_nCdhw16c(memory_desc);
     case oi: return fill_oi(memory_desc);
     case io: return fill_io(memory_desc);
     case oihw: return fill_oihw(memory_desc);

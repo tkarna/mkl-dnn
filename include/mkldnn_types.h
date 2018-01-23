@@ -120,7 +120,7 @@ typedef enum {
     mkldnn_nc,
     /** 4D data tensor in the @c nchw format typically used in Caffe. */
     mkldnn_nchw,
-    /** 5D data tensor in the @c nchwd format */    
+    /** 5D data tensor in the @c nchwd format */
     mkldnn_ncdhw,
     mkldnn_ndhwc,
     /** 5D data tensor in the @c oihwd format */
@@ -137,6 +137,9 @@ typedef enum {
     /** 4D data tensor in the @c nchw format with channels data laid out in
      * memory in 16-element blocks. */
     mkldnn_nChw16c,
+    /** 5D data tensor in the @c ncdhw format with channels data laid out in
+     * memory in 16-element blocks. */
+    mkldnn_nCdhw16c,
     /** 2D weights tensor in the format (input channels, output channels). */
     mkldnn_oi,
     /** 2D weights tensor in the format (input channels, output channels). */
