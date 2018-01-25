@@ -111,15 +111,13 @@ struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
         virtual status_t set_default_params() override {
             using namespace memory_format;
 
-            printf("--> set defaults from ref impl %d\n", this->src_pd_.desc()->format);
             if (this->src_pd_.desc()->format == any) {
-                printf(" --> assign nCdhw16c\n");
                 CHECK(this->src_pd_.set_format(nCdhw16c));
             }
             if (this->dst_pd_.desc()->format == any)
                 CHECK(this->dst_pd_.set_format(nCdhw16c));
             if (this->weights_pd_.desc()->format == any)
-                CHECK(this->weights_pd_.set_format(this->with_groups() ? goidhw : oidhw));
+                CHECK(this->weights_pd_.set_format(this->with_groups() ? gOIdhw16o16i : OIdhw16o16i));
             if (this->bias_pd_.desc()->format == any)
                 CHECK(this->bias_pd_.set_format(x));
             return status::success;
