@@ -613,6 +613,8 @@ struct memory: public primitive  {
         gIOhw16o16i = mkldnn_gIOhw16o16i,
         gOhIw16o4i = mkldnn_gOhIw16o4i,
         oIdhw16i = mkldnn_oIdhw16i,
+        OIdhw16o16i = mkldnn_OIdhw16o16i,
+        gOIdhw16o16i = mkldnn_gOIdhw16o16i,
     };
 
     /// A memory descriptor.

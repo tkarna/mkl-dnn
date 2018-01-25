@@ -105,6 +105,8 @@ const char *mkldnn_fmt2str(mkldnn_memory_format_t v) {
     if (v == mkldnn_oIhw8i) return "oIhw8i";
     if (v == mkldnn_oIhw16i) return "oIhw16i";
     if (v == mkldnn_oIdhw16i) return "oIdhw16i";
+    if (v == mkldnn_OIdhw16o16i) return "OIdhw16o16i";
+    if (v == mkldnn_gOIdhw16o16i) return "gOIdhw16o16i";
     assert(!"unknown fmt");
     return "unknown fmt";
 }
