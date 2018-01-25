@@ -123,7 +123,7 @@ typedef enum {
     /** 5D data tensor in the @c nchwd format */
     mkldnn_ncdhw,
     mkldnn_ndhwc,
-    /** 5D data tensor in the @c oihwd format */
+    /** 5D data tensor in the @c oidhw format */
     mkldnn_oidhw,
     /** 6D data tensor in the @c goihwd format */
     mkldnn_goidhw,
@@ -254,6 +254,9 @@ typedef enum {
     /** 4D weights tensor in the oihw format with input channels data laid out
      * in memory in 16-element blocks. */
     mkldnn_oIhw16i = mkldnn_nChw16c,
+    /** 5D weights tensor in the oidhw format with input channels data laid out
+     * in memory in 16-element blocks. */
+    mkldnn_oIdhw16i = mkldnn_nCdhw16c,
 } mkldnn_memory_format_t;
 
 /** Kinds of padding. Define how to interpret the data in padding regions. */
