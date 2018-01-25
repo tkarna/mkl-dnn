@@ -173,7 +173,6 @@ namespace primitive_kind {
     const primitive_kind_t concat_inplace = mkldnn_concat_inplace;
     const primitive_kind_t sum = mkldnn_sum;
     const primitive_kind_t convolution = mkldnn_convolution;
-    const primitive_kind_t convolution3D = mkldnn_convolution3D;
     const primitive_kind_t eltwise = mkldnn_eltwise;
     const primitive_kind_t softmax = mkldnn_softmax;
     const primitive_kind_t pooling = mkldnn_pooling;

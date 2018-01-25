@@ -48,9 +48,6 @@ status_t conv_desc_init(convolution_desc_t *conv_desc,
 
     convolution_desc_t cd = {};
     cd.primitive_kind = primitive_kind::convolution;
-    //if ( conv_kind == conv_kind_t::mkldnn_conv3D ) {
-    //    cd.primitive_kind = primitive_kind::convolution3D;
-    //}
     cd.prop_kind = prop_kind;
     cd.alg_kind = alg_kind;
     cd.conv_kind = conv_kind;
