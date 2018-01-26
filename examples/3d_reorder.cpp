@@ -23,7 +23,8 @@
 #include <stdlib.h>
 
 using namespace mkldnn;
-#define TEST_NCDHW_TO_NDHWC
+
+const float TOLERANCE=1e-16;
 
 #define COMMON_CODE_PRE() \
     for (int a=0; a<A; a++){ \
@@ -50,12 +51,22 @@ void copy_array_5d( float* src_array, float* dst_array, int A, int B, int C, int
   COMMON_CODE_POST()
 }
 
-void compare_array_5d( float* src_array, float* dst_array, int A, int B, int C, int D, int E) { 
-  float residual = 0;
+bool compare_array_5d( float* src_array, float* dst_array, int A, int B, int C, int D, int E) { 
+  float residual = 0; 
   COMMON_CODE_PRE()
   residual += dst_array[indx] - src_array[indx];
   COMMON_CODE_POST()
   std::cout << "\nError Residual value = " << residual << "\n";
+  if ( residual < TOLERANCE)
+    return true;
+  else 
+    return false;
+}
+
+void reset_array_5d( float* array, int A, int B, int C, int D, int E) {
+  COMMON_CODE_PRE()
+  array[indx] = 0; 
+  COMMON_CODE_POST()
 }
 
 void assign_array_5d(std::string name, float* array, int A, int B, int C, int D, int E, int offset) {
@@ -83,7 +94,7 @@ void print_array_5d(std::string name, float* array, int A, int B, int C, int D, 
 }
 
 
-void compare_ncdhw_ndhwc( float * dt_ncdhw, float * dt_ndhwc, int A, int B, int C, int D, int E ) {
+bool compare_ncdhw_ndhwc( float * dt_ncdhw, float * dt_ndhwc, int A, int B, int C, int D, int E ) {
   float residual = 0.0;
   COMMON_CODE_PRE()
   int indx_ncdhw = indx;
@@ -93,6 +104,10 @@ void compare_ncdhw_ndhwc( float * dt_ncdhw, float * dt_ndhwc, int A, int B, int 
 
   COMMON_CODE_POST()
   std::cout<< "\n Comparing final data: " << residual; 
+  if ( residual < TOLERANCE)
+    return true;
+  else 
+    return false;
 }
 
 void simple_net_3d(){
@@ -123,34 +138,50 @@ void simple_net_3d(){
     float *ndhwc_data = (float *)dnn_ndhwc_memory.get_data_handle();
     float* tmp_data = new float[ batch*depth*height*width*channels  ];
 
-    std::vector<primitive> net;
+    bool status1 = true;
+    bool status2 = true;
 
-    std::cout << "\nOriginal src array: \n"; 
-#ifdef TEST_NCDHW_TO_NDHWC
-    std::cout << "\nTesting NCDHW to NDHWC reorder: ";
-    assign_array_5d("ncdhw_data", ncdhw_data, NCDHW(), 0  );
-    print_array_5d("ncdhw_mem", ncdhw_data, NCDHW() );
-    copy_array_5d(ncdhw_data, tmp_data, NCDHW() );
-    // ncdhw to ndhwc and ndhwc to ncdhw again.
-    net.push_back(reorder(dnn_ncdhw_memory, dnn_ndhwc_memory));  
-    net.push_back(reorder(dnn_ndhwc_memory, dnn_ncdhw_memory));  
-    stream(stream::kind::eager).submit(net).wait();
-    print_array_5d("ndhwc_mem", ndhwc_data, NDHWC() );
-    compare_array_5d(ncdhw_data, tmp_data, NCDHW() );
-#else
-    std::cout << "\nTesting NDHWC to NCDHW reorder: ";
-    assign_array_5d("ndhwc_data", ndhwc_data, NDHWC(), 0  );
-    print_array_5d("ndhwc_mem", ndhwc_data, NDHWC() );
-    copy_array_5d(ndhwc_data, tmp_data, NDHWC() );
-    net.push_back(reorder(dnn_ndhwc_memory, dnn_ncdhw_memory));  
-    net.push_back(reorder(dnn_ncdhw_memory, dnn_ndhwc_memory));  
-    stream(stream::kind::eager).submit(net).wait();
-    print_array_5d("ncdhw_mem", ncdhw_data, NCDHW() );
-    compare_array_5d(ndhwc_data, tmp_data, NDHWC() );
+    {
+      std::vector<primitive> net;
+      std::cout << "\nOriginal src array: \n"; 
+      std::cout << "\nTesting NCDHW to NDHWC reorder: ";
+      reset_array_5d( ncdhw_data, NCDHW()  );
+      reset_array_5d( tmp_data, NCDHW() );
+      reset_array_5d( ndhwc_data, NDHWC()  );
+      assign_array_5d("ncdhw_data", ncdhw_data, NCDHW(), 0  );
+      print_array_5d("ncdhw_mem", ncdhw_data, NCDHW() );
+      copy_array_5d(ncdhw_data, tmp_data, NCDHW() );
+      // ncdhw to ndhwc and ndhwc to ncdhw again.
+      net.push_back(reorder(dnn_ncdhw_memory, dnn_ndhwc_memory));  
+      net.push_back(reorder(dnn_ndhwc_memory, dnn_ncdhw_memory));  
+      stream(stream::kind::eager).submit(net).wait();
+      print_array_5d("ndhwc_mem", ndhwc_data, NDHWC() );
+      status1 = status1 && compare_array_5d(ncdhw_data, tmp_data, NCDHW() );
+      status1 = status1 && compare_ncdhw_ndhwc ( ncdhw_data, ndhwc_data, NCDHW()  );
+    }
 
-#endif    
+    {
+      reset_array_5d( ncdhw_data, NCDHW()  );
+      reset_array_5d( tmp_data, NDHWC() );
+      reset_array_5d( ndhwc_data, NDHWC()  );
 
-    compare_ncdhw_ndhwc ( ncdhw_data, ndhwc_data, NCDHW()  );
+      std::vector<primitive> net;
+      std::cout << "\nTesting NDHWC to NCDHW reorder: ";
+      assign_array_5d("ndhwc_data", ndhwc_data, NDHWC(), 0  );
+      print_array_5d("ndhwc_mem", ndhwc_data, NDHWC() );
+      copy_array_5d(ndhwc_data, tmp_data, NDHWC() );
+      net.push_back(reorder(dnn_ndhwc_memory, dnn_ncdhw_memory));  
+      net.push_back(reorder(dnn_ncdhw_memory, dnn_ndhwc_memory));  
+      stream(stream::kind::eager).submit(net).wait();
+      print_array_5d("ncdhw_mem", ncdhw_data, NCDHW() );
+      status2 = status2 && compare_array_5d(ndhwc_data, tmp_data, NDHWC() );
+      status2 = status2 && compare_ncdhw_ndhwc ( ncdhw_data, ndhwc_data, NCDHW()  );
+    }
+
+    if ( status1 && status2 )
+      std::cout << "\nTests passed.\n";
+    else
+      std::cout << "\nEither one or both tests failed.\n";
 
     delete tmp_data;
 }
