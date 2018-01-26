@@ -103,6 +103,65 @@ bool simple_attr_check(const primitive_attr_t *attr, bool many_scales_support) {
 
 /* specific reorders: implementation */
 
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+    typename utils::enable_if<fmt_i == ncdhw && fmt_o == ndhwc>::type>
+{
+    SIMPLE_IS_APPLICABLE(false);
+
+    static status_t execute(const cpu_reorder_pd_t *pd,
+        const data_t<type_i> *input, data_t<type_o> *output) {
+        DECLARE_COMMON_PARAMS();
+        printf("\nAmrita: my code of reorder from ncdhw to ndhwc or other way called.\n");
+
+        const auto &dims = input_d.dims();
+        const auto is = input_d.blocking_desc().strides[0];
+        const auto os = output_d.blocking_desc().strides[0];
+
+        round_mode_t rmode = pd->attr()->round_mode_;
+
+        auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o) {
+            if (order_keep) {
+
+#               pragma unroll
+                for (int w = 0; w < dims[4]; ++w) {
+#                   pragma omp simd
+                    for (int c = 0; c < dims[1]; ++c) {
+                        o[w * os[4] + c] = qz<data_t<type_i>,
+                            data_t<type_o>>()(i[c * is[1] + w],
+                            o[w * os[4] + c], alpha, beta, rmode);
+                    }
+                }
+
+            } else {
+#               pragma unroll
+                for (int w = 0; w < dims[4]; ++w) {
+#                   pragma omp simd
+                    for (int c = 0; c < dims[1]; ++c) {
+                        o[c * os[1] + w] = qz<data_t<type_i>,
+                            data_t<type_o>>()(i[w * is[4] + c],
+                            o[c * os[1] + w], alpha, beta, rmode);
+                    }
+                }
+            }
+        };
+
+#       pragma omp parallel for collapse(3) schedule(static)
+        for (int n = 0; n < dims[0]; ++n) {
+            for ( int d = 0; d < dims[2]; d++ ) 
+            for (int h = 0; h < dims[3]; ++h) {
+                auto i = &input[input_d.blk_off(n, 0, d, h)];
+                auto o = &output[output_d.blk_off(n, 0, d, h)];
+                ker(i, o);
+            }
+        }
+
+        return success;
+    }
+};
+
+
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     typename utils::enable_if<
