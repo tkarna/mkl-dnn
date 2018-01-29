@@ -56,6 +56,16 @@ if(WIN32)
     set_property(TEST 3d_reorder_cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
 endif()
 
+add_executable(3d_reorder_filter_cpp 3d_reorder_filter.cpp)
+set_property(TARGET 3d_reorder_filter_cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(3d_reorder_filter_cpp ${LIB_NAME})
+add_test(3d_reorder_filter_cpp 3d_reorder_filter_cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      3d_reorder_filter_cpp.vcxproj.user @ONLY)
+    set_property(TEST 3d_reorder_filter_cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
+
 
 add_executable(test-convolution-3d-cpp test_convolution_3d.cpp)
 set_property(TARGET test-convolution-3d-cpp PROPERTY CXX_STANDARD 11)

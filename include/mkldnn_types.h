@@ -150,6 +150,10 @@ typedef enum {
     /** 4D weights tensor in the format (height, width, input channels,
      * output channels). */
     mkldnn_hwio,
+    /** 5D weights tensor in the format (depth, height, width, input
+     *  channels,
+     * output channels). */
+    mkldnn_dhwio,
     /** 4D weights tensor in the @c oihw format with both input and output
      * channels data laid out in memory in 8-element blocks. */
     mkldnn_OIhw8i8o,

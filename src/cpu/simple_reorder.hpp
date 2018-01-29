@@ -103,6 +103,60 @@ bool simple_attr_check(const primitive_attr_t *attr, bool many_scales_support) {
 
 /* specific reorders: implementation */
 
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+    typename utils::enable_if<fmt_i == dhwio && fmt_o == oidhw>::type>
+{
+    SIMPLE_IS_APPLICABLE(false);
+
+    static status_t execute(const cpu_reorder_pd_t *pd,
+        const data_t<type_i> *input, data_t<type_o> *output) {
+        DECLARE_COMMON_PARAMS();
+
+        const auto &dims = input_d.dims();
+        const auto is = input_d.blocking_desc().strides[0];
+        const auto os = output_d.blocking_desc().strides[0];
+
+        auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o) {
+            if (alpha == 1.0 && beta == 0) {
+                for (int oc = 0; oc < dims[0]; ++oc) {
+                    for (int kw = 0; kw < dims[4]; ++kw) {
+                        if (order_keep) {
+                            o[oc * os[0] + kw] = data_t<type_o>(i[kw*is[4]+oc]);
+                        } else {
+                            o[kw * os[4] + oc] = data_t<type_o>(i[oc*is[0]+kw]);
+                        }
+                    }
+                }
+            } else {
+                for (int oc = 0; oc < dims[0]; ++oc) {
+                    for (int kw = 0; kw < dims[4]; ++kw) {
+                        const auto dst_off = order_keep ? oc * os[0] + kw :
+                                                          kw * os[4] + oc;
+                        const auto src_off = order_keep ? kw * is[4] + oc :
+                                                          oc * is[0] + kw;
+                        o[dst_off] = data_t<type_o>(alpha * i[src_off]
+                                     + (beta ? beta * o[dst_off] : 0));
+                    }
+                }
+            }
+        };
+
+#       pragma omp parallel for collapse(3) schedule(static)
+        for (int ic = 0; ic < dims[1]; ++ic) {
+            for ( int kd = 0; kd < dims[2]; kd++ ) {
+                for (int kh = 0; kh < dims[3]; ++kh) {
+                    auto i = &input[input_d.blk_off(0, ic, kd, kh)];
+                    auto o = &output[output_d.blk_off(0, ic, kd, kh)];
+                    ker(i, o);
+                }
+            }
+        }
+
+        return success;
+    }
+};
+
 
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
@@ -157,9 +211,49 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
             }
         }
 
+#if 0
+        printf ("\n Dims are: %d, %d, %d, %d, %d", dims[0], dims[1], dims[2], dims[3], dims[4]) ;
+        printf("\nInput\n");
+        for (int n = 0; n < dims[0]; ++n) {
+            for (int c = 0; c < dims[1]; c++) {
+                for (int d = 0; d < dims[2]; d++) {
+                    for (int h = 0; h < dims[3]; ++h) { 
+                        for (int w = 0; w < dims[4]; w++ ) 
+                        {                
+                            printf ( " %f ", output[input_d.blk_off(n, c, d, h, w)] );                                
+                        }
+                        printf("\n");
+                    }
+                    printf("\n");
+                }
+                printf("\n");
+            }
+            printf("\n");
+        }
+
+        printf("\nOutput\n");
+        for (int n = 0; n < dims[0]; ++n) {
+            for (int c = 0; c < dims[1]; c++){ 
+                for (int d = 0; d < dims[2]; d++) {
+                    for (int h = 0; h < dims[3]; ++h) { 
+                        for (int w = 0; w < dims[4]; w++ ) 
+                        {                
+                            printf ( " %f ", output[output_d.blk_off(n, c, d, h, w)] );                
+                        }
+                        printf("\n");
+                    }
+                    printf("\n");
+                }
+                printf("\n");
+            }
+            printf("\n");
+        }
+#endif
+
         return success;
     }
 };
+
 
 
 template <SIMPLE_REORDER_TEMPL_DECL>
@@ -587,6 +681,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         return success;
     }
 };
+
 
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,

@@ -61,10 +61,11 @@ const char *mkldnn_fmt2str(mkldnn_memory_format_t v) {
     if (v == mkldnn_nc) return "nc";
     if (v == mkldnn_nchw) return "nchw";
     if (v == mkldnn_nhwc) return "nhwc";
-    if (v == mkldnn_oidhw) return "oidhw";
 
+    if (v == mkldnn_oidhw) return "oidhw";
     if (v == mkldnn_ncdhw) return "ncdhw";
     if (v == mkldnn_ndhwc) return "ndhwc";
+    if (v == mkldnn_dhwio) return "dhwio";
 
     if (v == mkldnn_chwn) return "chwn";
     if (v == mkldnn_nChw8c) return "nChw8c";

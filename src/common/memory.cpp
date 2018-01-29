@@ -64,6 +64,7 @@ status_t mkldnn_memory_desc_init(memory_desc_t *memory_desc, int ndims,
     case ncdhw:
     case ndhwc:
     case oidhw:
+    case dhwio:
     case nhwc:
     case chwn:
     case nChw8c:
@@ -105,6 +106,7 @@ status_t mkldnn_memory_desc_init(memory_desc_t *memory_desc, int ndims,
     case memory_format::undef:
     case blocked:
     default:
+        printf("\nMKL-DNN, Undefined format.\n");
         return invalid_arguments;
     }
 
