@@ -928,7 +928,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     }
 };
 
-template <SIMPLE_REORDER_TEMPL_DECL>  // FIXME
+template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     typename utils::enable_if<
 //         (fmt_i == goidhw && (fmt_o == gOIdhw8o8i || fmt_o == gOIdhw16o16i
@@ -991,7 +991,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
         const int _G = w_groups ? dims[0] : 1;
 
-#       pragma omp parallel for collapse(5) schedule(static)
+#       pragma omp parallel for collapse(6) schedule(static)
         for (int g = 0; g < _G; ++g) {
             for (int O = 0; O < dims[w_groups + 0] / blksize; ++O) {
                 for (int I = 0; I < dims[w_groups + 1] / blksize; ++I) {
@@ -1088,6 +1088,75 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                             auto o = &output[output_d.blk_off<!w_groups>(
                                     g, o_mult * O, o_mult * I, h, w)];
                             ker(i, o);
+                        }
+                    }
+                }
+            }
+        }
+
+        return success;
+    }
+};
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+    typename utils::enable_if<
+        (fmt_i == goidhw && fmt_o == gOidhw16o)
+        || (fmt_i == oidhw && fmt_o == Oidhw16o)
+    >::type>
+{
+    SIMPLE_IS_APPLICABLE(false);
+
+    static status_t execute(const cpu_reorder_pd_t *pd,
+        const data_t<type_i> *input, data_t<type_o> *output) {
+        DECLARE_COMMON_PARAMS();
+
+        constexpr bool w_groups = fmt_i == goihw;
+
+        const auto &_g_oihw_d = order_keep ? input_d : output_d;
+        const auto strd_oc = _g_oihw_d.blocking_desc().strides[0][w_groups];
+        const auto &dims = input_d.dims();
+        const int blksize = 16;
+
+        const int _G = w_groups ? dims[0] : 1;
+        constexpr int i_mult = order_keep ? blksize : 1;
+        constexpr int o_mult = order_keep ? 1 : blksize;
+
+#       pragma omp parallel for collapse(6) schedule(static)
+        for (int g = 0; g < _G; ++g) {
+            for (int O = 0; O < dims[w_groups + 0] / blksize; ++O) {
+                for (int i = 0; i < dims[w_groups + 1]; ++i) {
+                    for (int d = 0; d < dims[w_groups + 2]; ++d) {
+                        for (int h = 0; h < dims[w_groups + 3]; ++h) {
+                            for (int w = 0; w < dims[w_groups + 4]; ++w) {
+                                auto inp = &input [input_d.blk_off<!w_groups>(g,
+                                        i_mult * O, i, d, h, w)];
+                                auto out = &output[output_d.blk_off<!w_groups>(g,
+                                        o_mult * O, i, d, h, w)];
+                                if (alpha == 1.0 && beta == 0.0) {
+                                    for (int oc = 0; oc < blksize; ++oc) {
+                                        const auto off = oc * strd_oc;
+                                        if (order_keep) {
+                                            out[oc] = data_t<type_o>(inp[off]);
+                                        } else {
+                                            out[off] = data_t<type_o>(inp[oc]);
+                                        }
+                                    }
+                                } else {
+                                    for (int oc = 0; oc < blksize; ++oc) {
+                                        const auto off = oc * strd_oc;
+                                        if (order_keep) {
+                                            out[oc] = data_t<type_o>(
+                                                    alpha * inp[off] + (beta
+                                                        ? beta * out[oc] : 0));
+                                        } else {
+                                            out[off] = data_t<type_o>(
+                                                    alpha * inp[oc] + (beta
+                                                        ? beta * out[off] : 0));
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

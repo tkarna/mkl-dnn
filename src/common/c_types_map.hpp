@@ -149,6 +149,8 @@ namespace memory_format {
     const memory_format_t oIdhw16i = mkldnn_oIdhw16i;
     const memory_format_t OIdhw16o16i = mkldnn_OIdhw16o16i;
     const memory_format_t gOIdhw16o16i = mkldnn_gOIdhw16o16i;
+    const memory_format_t Oidhw16o = mkldnn_Oidhw16o;
+    const memory_format_t gOidhw16o = mkldnn_gOidhw16o;
 }
 
 using padding_kind_t = mkldnn_padding_kind_t;

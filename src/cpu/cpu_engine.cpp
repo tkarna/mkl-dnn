@@ -52,6 +52,7 @@
 #include "cpu/jit_uni_inner_product.hpp"
 #include "cpu/ref_convolution3D.hpp"
 #include "cpu/cpu_convolution3D_nCdhw16c.hpp"
+#include "cpu/cpu_convolution3D_1ch.hpp"
 
 namespace mkldnn {
 namespace impl {
@@ -83,6 +84,9 @@ using namespace mkldnn::impl::data_type;
 #define INSTANCE(...) &primitive_desc_t::create<__VA_ARGS__::pd_t>
 static const pd_create_f cpu_impl_list[] = {
 
+    INSTANCE(cpu_convolution3D_1ch_fwd_t<f32>),
+    INSTANCE(cpu_convolution3D_1ch_bwd_data_t<f32, f32, f32, f32>),
+    INSTANCE(cpu_convolution3D_1ch_bwd_weights_t<f32, f32, f32, f32>),
     INSTANCE(cpu_convolution3D_nCdhw16c_fwd_t<f32>),
     INSTANCE(cpu_convolution3D_nCdhw16c_bwd_data_t<f32, f32, f32, f32>),
     INSTANCE(cpu_convolution3D_nCdhw16c_bwd_weights_t<f32, f32, f32, f32>),

@@ -19,7 +19,7 @@
 #include "mkldnn_traits.hpp"
 #include "math_utils.hpp"
 
-#include "cpu_convolution3D_nCdhw16c.hpp"
+#include "cpu_convolution3D_1ch.hpp"
 #include <iostream>
 
 namespace mkldnn {
@@ -27,11 +27,10 @@ namespace impl {
 namespace cpu {
 
 using math::saturate;
-using namespace mkldnn::impl::utils;
 
 template <bool with_relu, data_type_t src_type, data_type_t wei_type,
          data_type_t dst_type, data_type_t acc_type>
-void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, acc_type>
+void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_type>
         ::execute_forward() {
 
     auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
@@ -53,13 +52,13 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
     const int OW = conf_.OW();
     const int OD = conf_.OD();
 
-    // const int IH = conf_.IH();
-    // const int IW = conf_.IW();
-    // const int ID = conf_.ID();
+    const int IH = conf_.IH();
+    const int IW = conf_.IW();
+    const int ID = conf_.ID();
 
     const int NBLOCK = 16;
     const int OC = conf_.OC() / G / NBLOCK;
-    const int IC = conf_.IC() / G / NBLOCK;
+    const int IC = conf_.IC() / G;
 
     const int KH = conf_.KH();
     const int KW = conf_.KW();
@@ -70,7 +69,7 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
     const int KSD = conf_.KSD();
 
     const int KDH = conf_.KDH();
-    const int KDW = conf_.KDW();
+    // const int KDW = conf_.KDW();
     const int KDD = conf_.KDD();
 
     const int padT = conf_.padT();
@@ -79,72 +78,52 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
 
     // const float nslope = conf_.negative_slope();
 
-    int ocb_work = div_up(OC*NBLOCK, NBLOCK);
-    const size_t work_amount = MB * G * ocb_work * OD;
-
-    auto ker = [&](const int ithr, const int nthr) {
-        size_t start{0}, end{0};
-        balance211(work_amount, nthr, ithr, start, end);
-        int icbb = 0;
-        while (icbb < IC) {
-            int icb_step = NBLOCK;
-            // int icb_step_rem = nb_ic - icbb;
-            // if (icb_step_rem < jcp.nb_ic_blocking_max)
-            //     icb_step = icb_step_rem;
-
-            size_t n{0}, g{0}, ocbb{0}, od{0};
-            nd_iterator_init(start, n, MB, g, G, ocbb, ocb_work, od, OD);
-            for (size_t iwork = start; iwork < end; ++iwork) {
-                int ocb = ocbb * NBLOCK;
-                for (int oh = 0; oh < OH; ++oh) {
-                    for (int ow = 0; ow < OW; ++ow) {
-                        // HACK assume no bias for now
-                        acc_data_t a[NBLOCK] = {0};
-                        for (int kd = 0; kd < KD; ++kd) {
-                            for (int kh = 0; kh < KH; ++kh) {
-                                for (int kw = 0; kw < KW; ++kw) {
+    const int ic = 0;  // only one input channel
+#   pragma omp parallel for collapse(6) schedule(static)
+    for (int g = 0; g < G; ++g) {
+        for (int mb = 0; mb < MB; ++mb) {
+            for (int oc = 0; oc < OC; ++oc) {
+                for (int od = 0; od < OD; ++od) {
+                    for (int oh = 0; oh < OH; ++oh) {
+                        for (int ow = 0; ow < OW; ++ow) {
+                            // HACK assume no bias for now
+                            acc_data_t a[NBLOCK] = {0};
+                            for (int kd = 0; kd < KD; ++kd) {
+                                for (int kh = 0; kh < KH; ++kh) {
                                     const int id = od * KSD - padD1 + kd * (1 + KDD);
                                     const int ih = oh * KSH - padT  + kh * (1 + KDH);
-                                    const int iw = ow * KSW - padL  + kw * (1 + KDW);
+                                    // const int iw = ow * KSW - padL  + kw * (1 + KDW);
+                                    // HACK assume no KDW
+                                    const int iw = ow * KSW - padL;
                                     // HACK skip bounds checking for now
                                     // not needed if no padding/dilation
 
-                                    const auto src_ix = src_d.blk_off(n, icbb, id, ih, iw);
-                                    const auto w_ix = weights_d.blk_off(ocbb, icbb, kd, kh, kw);
-                                    // HACK assume no groups for now
-                                    for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-#                                       pragma vector always assert
-                                        for (int _ic = 0; _ic < NBLOCK; ++_ic) {
-                                            a[_oc] += src[src_ix + _ic] * weights[w_ix + NBLOCK*_oc + _ic];
+                                    const size_t src_ix = ((((mb*IC + ic)*ID + id)*IH + ih)*IW + iw);
+                                    const size_t w_ix = ((((oc*IC + ic)*KD +kd)*KH + kh)*KW + 0)*NBLOCK;
+                                    for (int kw = 0; kw < KW; ++kw) {
+                                        // HACK assume no groups for now
+#                                           pragma vector always assert
+                                        for (int ocb = 0; ocb < NBLOCK; ++ocb) {
+                                            a[ocb] += src[src_ix + kw + ic] * weights[w_ix + NBLOCK*kw + ocb];
                                         }
                                     }
                                 }
                             }
-                        }
-                        const auto dst_ix = dst_d.off((int)n, (int)(g*OC*NBLOCK + ocb), (int)od, oh, ow);
-                        for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                            dst[dst_ix + _oc] = saturate<dst_data_t>(a[_oc]);
+                            const size_t dst_ix = ((((mb*OC + oc)*OD + od)*OH + oh)*OW + ow)*NBLOCK;
+                            for (int ocb = 0; ocb < NBLOCK; ++ocb) {
+                                dst[dst_ix + ocb] = saturate<dst_data_t>(a[ocb]);
+                            }
                         }
                     }
                 }
-
-                nd_iterator_step(n, MB, g, G, ocbb, ocb_work, od, OD);
-
             }
-            icbb += icb_step;
         }
-    };
-
-#   pragma omp parallel
-    {
-        ker(omp_get_thread_num(), omp_get_num_threads());
     }
-
 }
 
 template <data_type_t diff_src_type, data_type_t wei_type,
          data_type_t diff_dst_type, data_type_t acc_type>
-void cpu_convolution3D_nCdhw16c_bwd_data_t<diff_src_type, wei_type, diff_dst_type,
+void cpu_convolution3D_1ch_bwd_data_t<diff_src_type, wei_type, diff_dst_type,
      acc_type>::execute_backward_data() {
     auto diff_dst = reinterpret_cast<const diff_dst_data_t*>(
             this->input_memory(0));
@@ -236,7 +215,7 @@ void cpu_convolution3D_nCdhw16c_bwd_data_t<diff_src_type, wei_type, diff_dst_typ
 
 template <data_type_t src_type, data_type_t diff_wei_type,
          data_type_t diff_dst_type, data_type_t acc_type>
-void cpu_convolution3D_nCdhw16c_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
+void cpu_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
      acc_type>::execute_backward_weights() {
     auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
     auto diff_dst = reinterpret_cast<const diff_dst_data_t *>(
@@ -347,22 +326,22 @@ void cpu_convolution3D_nCdhw16c_bwd_weights_t<src_type, diff_wei_type, diff_dst_
 
 using namespace data_type;
 
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<false, f32>;
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<true, f32>;
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<false, s16, s16, s32, s32>;
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<true, s16, s16, s32, s32>;
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<false, u8, s8, s32, s32>;
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<true, u8, s8, s32, s32>;
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<false, u8, s8, s8, s32>;
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<true, u8, s8, s8, s32>;
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<false, u8, s8, u8, s32>;
-template struct _cpu_convolution3D_nCdhw16c_fwd_t<true, u8, s8, u8, s32>;
+template struct _cpu_convolution3D_1ch_fwd_t<false, f32>;
+template struct _cpu_convolution3D_1ch_fwd_t<true, f32>;
+template struct _cpu_convolution3D_1ch_fwd_t<false, s16, s16, s32, s32>;
+template struct _cpu_convolution3D_1ch_fwd_t<true, s16, s16, s32, s32>;
+template struct _cpu_convolution3D_1ch_fwd_t<false, u8, s8, s32, s32>;
+template struct _cpu_convolution3D_1ch_fwd_t<true, u8, s8, s32, s32>;
+template struct _cpu_convolution3D_1ch_fwd_t<false, u8, s8, s8, s32>;
+template struct _cpu_convolution3D_1ch_fwd_t<true, u8, s8, s8, s32>;
+template struct _cpu_convolution3D_1ch_fwd_t<false, u8, s8, u8, s32>;
+template struct _cpu_convolution3D_1ch_fwd_t<true, u8, s8, u8, s32>;
 
-template struct cpu_convolution3D_nCdhw16c_bwd_data_t<f32, f32, f32, f32>;
-template struct cpu_convolution3D_nCdhw16c_bwd_data_t<s32, s16, s16, s32>;
+template struct cpu_convolution3D_1ch_bwd_data_t<f32, f32, f32, f32>;
+template struct cpu_convolution3D_1ch_bwd_data_t<s32, s16, s16, s32>;
 
-template struct cpu_convolution3D_nCdhw16c_bwd_weights_t<f32, f32, f32, f32>;
-template struct cpu_convolution3D_nCdhw16c_bwd_weights_t<s16, s32, s16, s32>;
+template struct cpu_convolution3D_1ch_bwd_weights_t<f32, f32, f32, f32>;
+template struct cpu_convolution3D_1ch_bwd_weights_t<s16, s32, s16, s32>;
 
 }
 }
