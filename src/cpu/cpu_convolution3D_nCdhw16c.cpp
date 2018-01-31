@@ -53,9 +53,9 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
     const int OW = conf_.OW();
     const int OD = conf_.OD();
 
-    // const int IH = conf_.IH();
-    // const int IW = conf_.IW();
-    // const int ID = conf_.ID();
+    const int IH = conf_.IH();
+    const int IW = conf_.IW();
+    const int ID = conf_.ID();
 
     const int NBLOCK = 16;
     const int OC = conf_.OC() / G / NBLOCK;
@@ -95,7 +95,7 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
             size_t n{0}, g{0}, ocbb{0}, od{0};
             nd_iterator_init(start, n, MB, g, G, ocbb, ocb_work, od, OD);
             for (size_t iwork = start; iwork < end; ++iwork) {
-                int ocb = ocbb * NBLOCK;
+                // int ocb = ocbb * NBLOCK;
                 for (int oh = 0; oh < OH; ++oh) {
                     for (int ow = 0; ow < OW; ++ow) {
                         // HACK assume no bias for now
@@ -109,8 +109,9 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
                                     // HACK skip bounds checking for now
                                     // not needed if no padding/dilation
 
-                                    const auto src_ix = src_d.blk_off(n, icbb, id, ih, iw);
-                                    const auto w_ix = weights_d.blk_off(ocbb, icbb, kd, kh, kw);
+                                    // FIXME compute input block number correctly icbb/NBLOCK
+                                    const size_t src_ix = ((((n*IC + icbb/NBLOCK)*ID + id)*IH + ih)*IW + iw)*NBLOCK;
+                                    const size_t w_ix = ((((ocbb*IC + icbb/NBLOCK)*KD + kd)*KH + kh)*KW + kw)*NBLOCK*NBLOCK;
                                     // HACK assume no groups for now
                                     for (int _oc = 0; _oc < NBLOCK; ++_oc) {
 #                                       pragma vector always assert
@@ -121,7 +122,7 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
                                 }
                             }
                         }
-                        const auto dst_ix = dst_d.off((int)n, (int)(g*OC*NBLOCK + ocb), (int)od, oh, ow);
+                        const size_t dst_ix = ((((n*OC + ocbb)*OD + od)*OH + oh)*OW + ow)*NBLOCK;
                         for (int _oc = 0; _oc < NBLOCK; ++_oc) {
                             dst[dst_ix + _oc] = saturate<dst_data_t>(a[_oc]);
                         }
