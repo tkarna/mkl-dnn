@@ -67,7 +67,6 @@ struct _cpu_convolution3D_1ch_fwd_t: public cpu_primitive_t {
                         && utils::implication(src_type == f32,
                             this->cdesc_().bias_desc.data_type == f32))
                 && this->attr()->has_default_values();
-            printf("check 1ch conv: %d\n", ok);
             return ok ? status::success : status::unimplemented;
         }
 

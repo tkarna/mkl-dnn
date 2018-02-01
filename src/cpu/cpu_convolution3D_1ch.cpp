@@ -35,7 +35,7 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
 
     auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
-    // auto bias = reinterpret_cast<const char *>(this->input_memory(2));
+    auto bias = reinterpret_cast<const char *>(this->input_memory(2));
     auto dst = reinterpret_cast<dst_data_t *>(this->memory());
 
     const memory_desc_wrapper src_d(conf_.src_pd());
@@ -69,14 +69,32 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
     const int KSD = conf_.KSD();
 
     const int KDH = conf_.KDH();
-    // const int KDW = conf_.KDW();
+    const int KDW = conf_.KDW();
     const int KDD = conf_.KDD();
 
     const int padT = conf_.padT();
     const int padL = conf_.padL();
     const int padD1 = conf_.padD1();
 
-    // const float nslope = conf_.negative_slope();
+    const float nslope = conf_.negative_slope();
+
+    auto get_bias = [=, &bias](size_t off) -> acc_data_t {
+#       define CASE(dt) case dt: \
+            return (acc_data_t)(*((const prec_traits<dt>::type *)bias + off))
+        switch (conf_.cdesc()->bias_desc.data_type) {
+        CASE(data_type::s8);
+        CASE(data_type::u8);
+        CASE(data_type::s32);
+        CASE(data_type::f32);
+        default: assert(!"unimplemented");
+        }
+#       undef CASE
+        return 0;
+    };
+
+    assert(G == 0); // NOTE groups not implemented
+    assert(KDH == 0 && KDW == 0 && KDD == 0); // NOTE dilation not implemented
+    assert(padT == 0 && padL == 0 && padD1 == 0); // NOTE pad not implemented
 
     const int ic = 0;  // only one input channel
 #   pragma omp parallel for collapse(6) schedule(static)
@@ -88,23 +106,26 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
                         for (int ow = 0; ow < OW; ++ow) {
                             // HACK assume no bias for now
                             acc_data_t a[NBLOCK] = {0};
+                            if (bias) {
+                                for (int ocb = 0; ocb < NBLOCK; ++ocb) {
+                                    a[ocb] = get_bias(bias_d.off((int)(g*oc + ocb)));
+                                }
+                            }
                             for (int kd = 0; kd < KD; ++kd) {
                                 for (int kh = 0; kh < KH; ++kh) {
                                     const int id = od * KSD - padD1 + kd * (1 + KDD);
                                     const int ih = oh * KSH - padT  + kh * (1 + KDH);
-                                    // const int iw = ow * KSW - padL  + kw * (1 + KDW);
-                                    // HACK assume no KDW
                                     const int iw = ow * KSW - padL;
-                                    // HACK skip bounds checking for now
+                                    // NOTE skip bounds checking for now
                                     // not needed if no padding/dilation
 
                                     const size_t src_ix = ((((mb*IC + ic)*ID + id)*IH + ih)*IW + iw);
                                     const size_t w_ix = ((((oc*IC + ic)*KD +kd)*KH + kh)*KW + 0)*NBLOCK;
                                     for (int kw = 0; kw < KW; ++kw) {
-                                        // HACK assume no groups for now
+                                        // NOTE assume no groups for now
 #                                       pragma ivdep
                                         for (int ocb = 0; ocb < NBLOCK; ++ocb) {
-                                            a[ocb] += src[src_ix + kw + ic] * weights[w_ix + NBLOCK*kw + ocb];
+                                            a[ocb] += src[src_ix + (1 + KDW)*kw + ic] * weights[w_ix + NBLOCK*kw + ocb];
                                         }
                                     }
                                 }
@@ -112,6 +133,8 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
                             const size_t dst_ix = ((((mb*OC + oc)*OD + od)*OH + oh)*OW + ow)*NBLOCK;
 #                           pragma ivdep
                             for (int ocb = 0; ocb < NBLOCK; ++ocb) {
+                                if (with_relu && a[ocb] < (acc_data_t)0)
+                                    a[ocb] = (acc_data_t)((float)a[ocb] * nslope);
                                 dst[dst_ix + ocb] = saturate<dst_data_t>(a[ocb]);
                             }
                         }

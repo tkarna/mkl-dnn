@@ -36,7 +36,7 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
 
     auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
-    // auto bias = reinterpret_cast<const char *>(this->input_memory(2));
+    auto bias = reinterpret_cast<const char *>(this->input_memory(2));
     auto dst = reinterpret_cast<dst_data_t *>(this->memory());
 
     const memory_desc_wrapper src_d(conf_.src_pd());
@@ -77,10 +77,28 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
     const int padL = conf_.padL();
     const int padD1 = conf_.padD1();
 
-    // const float nslope = conf_.negative_slope();
+    const float nslope = conf_.negative_slope();
 
     int ocb_work = div_up(OC*NBLOCK, NBLOCK);
     const size_t work_amount = MB * G * ocb_work * OD;
+
+    auto get_bias = [=, &bias](size_t off) -> acc_data_t {
+#       define CASE(dt) case dt: \
+            return (acc_data_t)(*((const prec_traits<dt>::type *)bias + off))
+        switch (conf_.cdesc()->bias_desc.data_type) {
+        CASE(data_type::s8);
+        CASE(data_type::u8);
+        CASE(data_type::s32);
+        CASE(data_type::f32);
+        default: assert(!"unimplemented");
+        }
+#       undef CASE
+        return 0;
+    };
+
+    assert(G == 0); // NOTE groups not implemented
+    assert(KDH == 0 && KDW == 0 && KDD == 0); // NOTE dilation not implemented
+    assert(padT == 0 && padL == 0 && padD1 == 0); // NOTE pad not implemented
 
     auto ker = [&](const int ithr, const int nthr) {
         size_t start{0}, end{0};
@@ -88,31 +106,30 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
         int icbb = 0;
         while (icbb < IC) {
             int icb_step = NBLOCK;
-            // int icb_step_rem = nb_ic - icbb;
-            // if (icb_step_rem < jcp.nb_ic_blocking_max)
-            //     icb_step = icb_step_rem;
-
             size_t n{0}, g{0}, ocbb{0}, od{0};
             nd_iterator_init(start, n, MB, g, G, ocbb, ocb_work, od, OD);
             for (size_t iwork = start; iwork < end; ++iwork) {
                 // int ocb = ocbb * NBLOCK;
                 for (int oh = 0; oh < OH; ++oh) {
                     for (int ow = 0; ow < OW; ++ow) {
-                        // HACK assume no bias for now
                         acc_data_t a[NBLOCK] = {0};
+                        if (bias) {
+                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                a[_oc] = get_bias(bias_d.off((int)(g*ocbb + _oc)));
+                            }
+                        }
                         for (int kd = 0; kd < KD; ++kd) {
                             for (int kh = 0; kh < KH; ++kh) {
                                 for (int kw = 0; kw < KW; ++kw) {
                                     const int id = od * KSD - padD1 + kd * (1 + KDD);
                                     const int ih = oh * KSH - padT  + kh * (1 + KDH);
                                     const int iw = ow * KSW - padL  + kw * (1 + KDW);
-                                    // HACK skip bounds checking for now
+                                    // NOTE skip bounds checking for now
                                     // not needed if no padding/dilation
 
-                                    // FIXME compute input block number correctly icbb/NBLOCK
                                     const size_t src_ix = ((((n*IC + icbb/NBLOCK)*ID + id)*IH + ih)*IW + iw)*NBLOCK;
                                     const size_t w_ix = ((((ocbb*IC + icbb/NBLOCK)*KD + kd)*KH + kh)*KW + kw)*NBLOCK*NBLOCK;
-                                    // HACK assume no groups for now
+                                    // NOTE assume no groups for now
                                     for (int _oc = 0; _oc < NBLOCK; ++_oc) {
 #                                       pragma vector always assert
                                         for (int _ic = 0; _ic < NBLOCK; ++_ic) {
@@ -125,6 +142,8 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
                         const size_t dst_ix = ((((n*OC + ocbb)*OD + od)*OH + oh)*OW + ow)*NBLOCK;
 #                       pragma ivdep
                         for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                            if (with_relu && a[_oc] < (acc_data_t)0)
+                                a[_oc] = (acc_data_t)((float)a[_oc] * nslope);
                             dst[dst_ix + _oc] = saturate<dst_data_t>(a[_oc]);
                         }
                     }
