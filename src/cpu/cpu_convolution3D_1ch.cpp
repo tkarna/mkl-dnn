@@ -102,7 +102,7 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
                                     const size_t w_ix = ((((oc*IC + ic)*KD +kd)*KH + kh)*KW + 0)*NBLOCK;
                                     for (int kw = 0; kw < KW; ++kw) {
                                         // HACK assume no groups for now
-#                                           pragma vector always assert
+#                                       pragma ivdep
                                         for (int ocb = 0; ocb < NBLOCK; ++ocb) {
                                             a[ocb] += src[src_ix + kw + ic] * weights[w_ix + NBLOCK*kw + ocb];
                                         }
@@ -110,6 +110,7 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
                                 }
                             }
                             const size_t dst_ix = ((((mb*OC + oc)*OD + od)*OH + oh)*OW + ow)*NBLOCK;
+#                           pragma ivdep
                             for (int ocb = 0; ocb < NBLOCK; ++ocb) {
                                 dst[dst_ix + ocb] = saturate<dst_data_t>(a[ocb]);
                             }

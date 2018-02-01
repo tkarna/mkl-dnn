@@ -123,6 +123,7 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
                             }
                         }
                         const size_t dst_ix = ((((n*OC + ocbb)*OD + od)*OH + oh)*OW + ow)*NBLOCK;
+#                       pragma ivdep
                         for (int _oc = 0; _oc < NBLOCK; ++_oc) {
                             dst[dst_ix + _oc] = saturate<dst_data_t>(a[_oc]);
                         }
