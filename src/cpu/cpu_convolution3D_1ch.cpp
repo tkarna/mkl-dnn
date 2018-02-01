@@ -361,11 +361,11 @@ template struct _cpu_convolution3D_1ch_fwd_t<true, u8, s8, s8, s32>;
 template struct _cpu_convolution3D_1ch_fwd_t<false, u8, s8, u8, s32>;
 template struct _cpu_convolution3D_1ch_fwd_t<true, u8, s8, u8, s32>;
 
-template struct cpu_convolution3D_1ch_bwd_data_t<f32, f32, f32, f32>;
-template struct cpu_convolution3D_1ch_bwd_data_t<s32, s16, s16, s32>;
+// template struct cpu_convolution3D_1ch_bwd_data_t<f32, f32, f32, f32>;
+// template struct cpu_convolution3D_1ch_bwd_data_t<s32, s16, s16, s32>;
 
-template struct cpu_convolution3D_1ch_bwd_weights_t<f32, f32, f32, f32>;
-template struct cpu_convolution3D_1ch_bwd_weights_t<s16, s32, s16, s32>;
+// template struct cpu_convolution3D_1ch_bwd_weights_t<f32, f32, f32, f32>;
+// template struct cpu_convolution3D_1ch_bwd_weights_t<s16, s32, s16, s32>;
 
 }
 }
