@@ -272,34 +272,51 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         const auto &ncdhw_d = order_keep ? input_d : output_d;
         const auto &dims = input_d.dims();
         // constexpr int blksize = fmt_o == nChw8c ? 8 : 16;
-        constexpr int blksize = 16;
+        const int blksize = 16;
+        const auto st_off = ncdhw_d.blocking_desc().strides[0][1];
 
         auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o) {
             if (alpha == 1.0 && beta == 0.0) {
-                for (int w = 0; w < dims[4]; ++w) {
-                    for (int c = 0; c < blksize; ++c) {
-                        const auto ncdhw_off =
-                            c * ncdhw_d.blocking_desc().strides[0][1] + w;  // FIXME strides index?
-                        if (order_keep) {
+                if (order_keep) {
+#                   pragma unroll
+                    for (int w = 0; w < dims[4]; ++w) {
+#                       pragma omp simd
+                        for (int c = 0; c < blksize; ++c) {
+                            const auto ncdhw_off = c * st_off + w;
                             o[w * blksize + c] = data_t<type_o>(i[ncdhw_off]);
-                        } else {
+                        }
+                    }
+                } else {
+#                   pragma unroll
+                    for (int w = 0; w < dims[4]; ++w) {
+#                       pragma omp simd
+                        for (int c = 0; c < blksize; ++c) {
+                            const auto ncdhw_off = c * st_off + w;
                             o[ncdhw_off] = data_t<type_o>(i[w * blksize + c]);
                         }
                     }
                 }
             } else {
-                for (int w = 0; w < dims[4]; ++w) {
-                    for (int c = 0; c < blksize; ++c) {
-                        const auto ncdhw_off =
-                            c * ncdhw_d.blocking_desc().strides[0][1] + w;
-                        if (order_keep) {
-                            o[w * blksize + c] = data_t<type_o>(
-                                alpha * i[ncdhw_off]
-                                + (beta ? beta * o[w * blksize + c] : 0));
-                        } else {
-                            o[ncdhw_off] = data_t<type_o>(
-                                alpha * i[w * blksize + c]
-                                + (beta ? beta * o[ncdhw_off] : 0));
+                if (order_keep) {
+#                   pragma unroll
+                    for (int w = 0; w < dims[4]; ++w) {
+#                       pragma omp simd
+                        for (int c = 0; c < blksize; ++c) {
+                            const auto ncdhw_off = c * st_off + w;
+                                o[w * blksize + c] = data_t<type_o>(
+                                    alpha * i[ncdhw_off]
+                                    + (beta ? beta * o[w * blksize + c] : 0));
+                        }
+                    }
+                } else {
+#                   pragma unroll
+                    for (int w = 0; w < dims[4]; ++w) {
+#                       pragma omp simd
+                        for (int c = 0; c < blksize; ++c) {
+                            const auto ncdhw_off = c * st_off + w;
+                                o[ncdhw_off] = data_t<type_o>(
+                                    alpha * i[w * blksize + c]
+                                    + (beta ? beta * o[ncdhw_off] : 0));
                         }
                     }
                 }
