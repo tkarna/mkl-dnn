@@ -29,7 +29,7 @@ const float TOLERANCE=1e-16;
 #define COMMON_CODE_PRE() \
     for (int a=0; a<A; a++){ \
         for (int b=0; b<B; b++) { \
-            for (int c=0; c<C; c++) { \             
+            for (int c=0; c<C; c++) { \
               for ( int d=0; d<D; d++) {  \
                 for ( int e=0; e<E; e++ ) {  \
                     int indx = a*B*C*D*E + b*C*D*E + c*D*E + d*E + e;
@@ -81,7 +81,7 @@ void print_array_5d(std::string name, float* array, int A, int B, int C, int D, 
     std::cout << "\nDims: " << A << " " << B << " " << C << " " << D << " " << E << "\n";
     COMMON_CODE_PRE()
 
-                    std::cout << std::setw(6) << array[a*B*C*D*E + b*C*D*E + c*D*E + d*E + e];
+                    std::cout << std::setw(6) << array[indx];
                 }
                 std::cout << std::endl;
               }
