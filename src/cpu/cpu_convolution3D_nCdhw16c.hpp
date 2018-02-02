@@ -60,6 +60,8 @@ struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
                 && this->cdesc_().accum_data_type == acc_type
                 && this->cdesc_().dst_desc.data_type == dst_type
                 && this->cdesc_().conv_kind == conv_kind::conv3D
+                && this->cdesc_().src_desc.dims[1] % 16 == 0
+                && this->cdesc_().dst_desc.dims[1] % 16 == 0
                 && utils::implication(this->with_bias(), true
                         && utils::implication(src_type == u8,
                             utils::one_of(this->cdesc_().bias_desc.data_type,
@@ -67,6 +69,7 @@ struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
                         && utils::implication(src_type == f32,
                             this->cdesc_().bias_desc.data_type == f32))
                 && this->attr()->has_default_values();
+                if (ok) printf("Check 16ch fwd convolution: OK\n");
             return ok ? status::success : status::unimplemented;
         }
 
@@ -189,7 +192,10 @@ struct cpu_convolution3D_nCdhw16c_bwd_data_t: public cpu_primitive_t {
                 && this->desc()->accum_data_type == acc_type
                 && this->desc()->diff_src_desc.data_type == diff_src_type
                 && this->desc()->conv_kind == conv_kind::conv3D
+                && this->desc()->diff_src_desc.dims[1] % 16 == 0
+                && this->desc()->diff_dst_desc.dims[1] % 16 == 0
                 && this->attr()->has_default_values();
+                if (ok) printf("Check 16ch bkw data convolution: OK\n");
             return ok ? status::success : status::unimplemented;
         }
 
@@ -227,6 +233,17 @@ struct cpu_convolution3D_nCdhw16c_bwd_data_t: public cpu_primitive_t {
         inline int padB() const { return this->desc()->padding[1][1]; }
         inline int padL() const { return this->desc()->padding[0][2]; }
         inline int padR() const { return this->desc()->padding[1][2]; }
+      protected:
+        virtual status_t set_default_params() override {
+            using namespace memory_format;
+            if (diff_src_pd_.desc()->format == any)
+                CHECK(diff_src_pd_.set_format(nCdhw16c));
+            if (diff_dst_pd_.desc()->format == any)
+                CHECK(diff_dst_pd_.set_format(diff_src_pd_.desc()->format));
+            if (weights_pd_.desc()->format == any)
+                CHECK(weights_pd_.set_format(this->with_groups() ? gOIdhw16o16i : OIdhw16o16i));
+            return status::success;
+        }
     };
 
     cpu_convolution3D_nCdhw16c_bwd_data_t(const pd_t *pd, const input_vector &inputs,
@@ -282,10 +299,13 @@ struct cpu_convolution3D_nCdhw16c_bwd_weights_t: public cpu_primitive_t {
                 && this->desc()->diff_dst_desc.data_type == diff_dst_type
                 && this->desc()->accum_data_type == acc_type
                 && this->desc()->conv_kind == conv_kind::conv3D
+                && this->desc()->src_desc.dims[1] % 16 == 0
+                && this->desc()->diff_dst_desc.dims[1] % 16 == 0
                 && utils::implication(this->with_bias(),
                         this->desc()->diff_bias_desc.data_type
                         == diff_wei_type)
                 && this->attr()->has_default_values();
+                if (ok) printf("Check 16ch bkw weights convolution: OK\n");
             return ok ? status::success : status::unimplemented;
         }
         inline int MB() const { return this->desc()->src_desc.dims[0]; }
@@ -322,6 +342,21 @@ struct cpu_convolution3D_nCdhw16c_bwd_weights_t: public cpu_primitive_t {
         inline int padB() const { return this->desc()->padding[1][1]; }
         inline int padL() const { return this->desc()->padding[0][2]; }
         inline int padR() const { return this->desc()->padding[1][2]; }
+      protected:
+        virtual status_t set_default_params() override {
+            using namespace memory_format;
+
+            if (src_pd_.desc()->format == any)
+                CHECK(src_pd_.set_format(nCdhw16c));
+            if (diff_dst_pd_.desc()->format == any)
+                CHECK(diff_dst_pd_.set_format(nCdhw16c));
+            if (diff_weights_pd_.desc()->format == any)
+                CHECK(diff_weights_pd_.set_format(
+                            this->with_groups() ? gOIdhw16o16i : OIdhw16o16i));
+            if (diff_bias_pd_.desc()->format == any)
+                CHECK(diff_bias_pd_.set_format(x));
+            return status::success;
+        }
     };
 
     cpu_convolution3D_nCdhw16c_bwd_weights_t(const pd_t *pd, const input_vector &inputs,
