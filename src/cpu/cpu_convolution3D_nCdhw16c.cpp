@@ -101,6 +101,7 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
                         for (int ow = 0; ow < OW; ++ow) {
                             acc_data_t a[NBLOCK] = {0};
                             if (bias) {
+#                               pragma omp simd
                                 for (int _oc = 0; _oc < NBLOCK; ++_oc) {
                                     a[_oc] = get_bias(bias_d.off((int)((g*OCB + ocb)*NBLOCK + _oc)));
                                 }
@@ -119,7 +120,7 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
                                             const size_t w_ix = ((((ocb*ICB + icb)*KD + kd)*KH + kh)*KW + kw)*NBLOCK*NBLOCK;
                                             // HACK assume no groups for now
                                             for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-#                                               pragma ivdep
+#                                               pragma omp simd
                                                 for (int _ic = 0; _ic < NBLOCK; ++_ic) {
                                                     a[_oc] += src[src_ix + _ic] * weights[w_ix + NBLOCK*_oc + _ic];
                                                 }
@@ -129,7 +130,7 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
                                 }
                             }
                             const size_t dst_ix = ((((mb*OCB + ocb)*OD + od)*OH + oh)*OW + ow)*NBLOCK;
-#                           pragma ivdep
+#                           pragma omp simd
                             for (int ocb = 0; ocb < NBLOCK; ++ocb) {
                                 if (with_relu && a[ocb] < (acc_data_t)0)
                                     a[ocb] = (acc_data_t)((float)a[ocb] * nslope);
@@ -217,6 +218,7 @@ void cpu_convolution3D_nCdhw16c_bwd_data_t<diff_src_type, wei_type, diff_dst_typ
                                             auto dst_ix = diff_dst_d.off(mb, (g*OCB + ocb)*NBLOCK, od, oh, ow);
                                             auto w_ix = weights_d.off(ocb*NBLOCK, icb*NBLOCK, kd, kh, kw);
                                             for (int _ic = 0; _ic < NBLOCK; ++_ic) {
+#                                               pragma omp simd
                                                 for (int _oc = 0; _oc < NBLOCK; ++_oc) {
                                                     a[_ic] += (acc_data_t)diff_dst[dst_ix + _oc] * weights[w_ix + _oc*NBLOCK + _ic];
                                                 }
@@ -226,6 +228,7 @@ void cpu_convolution3D_nCdhw16c_bwd_data_t<diff_src_type, wei_type, diff_dst_typ
                                 }
                             }
                             auto ds_idx = diff_src_d.off(mb, (g*ICB + icb)*NBLOCK, id, ih, iw);
+#                           pragma omp simd
                             for (int _ic = 0; _ic < NBLOCK; ++_ic) {
                                 diff_src[ds_idx + _ic] = saturate<diff_src_data_t>(a[_ic]);
                             }
@@ -293,6 +296,7 @@ void cpu_convolution3D_nCdhw16c_bwd_weights_t<src_type, diff_wei_type, diff_dst_
                         for (int oh = 0; oh < OH; ++oh) {
                             for (int ow = 0; ow < OW; ++ow) {
                                 auto dst_ix = diff_dst_d.off(mb, g*OCB*NBLOCK + ocb*NBLOCK, od, oh, ow);
+#                               pragma omp simd
                                 for (int _oc=0; _oc < NBLOCK; ++_oc) {
                                     db[_oc] += (acc_data_t)diff_dst[dst_ix + _oc];
                                 }
@@ -301,6 +305,7 @@ void cpu_convolution3D_nCdhw16c_bwd_weights_t<src_type, diff_wei_type, diff_dst_
                     }
                 }
                 auto bias_ix = diff_bias_d.off(g*OCB*NBLOCK + ocb*NBLOCK);
+#               pragma omp simd
                 for (int _oc=0; _oc < NBLOCK; ++_oc) {
                     diff_bias[bias_ix + _oc] = saturate<diff_wei_data_t>(db[_oc]);
                 }
@@ -336,6 +341,7 @@ void cpu_convolution3D_nCdhw16c_bwd_weights_t<src_type, diff_wei_type, diff_dst_
                                             auto dst_ix = diff_dst_d.off(mb, g*OCB*NBLOCK + ocb*NBLOCK, od, oh, ow);
                                             auto src_ix = src_d.off(mb, g*ICB*NBLOCK + icb*NBLOCK, id, ih, iw);
                                             for (int _oc=0; _oc < NBLOCK; ++_oc) {
+#                                               pragma omp simd
                                                 for (int _ic=0; _ic < NBLOCK; ++_ic) {
                                                     dw[_oc*NBLOCK + _ic] += (acc_data_t)diff_dst[dst_ix + _oc] * src[src_ix + _ic];
                                                 }
@@ -346,6 +352,7 @@ void cpu_convolution3D_nCdhw16c_bwd_weights_t<src_type, diff_wei_type, diff_dst_
                             }
                             auto idx = diff_weights_d.off(ocb*NBLOCK, icb*NBLOCK, kd, kh, kw);
                             for (int _oc=0; _oc < NBLOCK; ++_oc) {
+#                               pragma omp simd
                                 for (int _ic=0; _ic < NBLOCK; ++_ic) {
                                     diff_weights[idx + _oc*NBLOCK + _ic] = saturate<diff_wei_data_t>(dw[_oc*NBLOCK + _ic]);
                                 }
