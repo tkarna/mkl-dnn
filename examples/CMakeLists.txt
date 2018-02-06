@@ -66,7 +66,6 @@ if(WIN32)
     set_property(TEST 3d_reorder_filter_cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
 endif()
 
-
 add_executable(test-convolution-3d-cpp test_convolution_3d.cpp)
 set_property(TARGET test-convolution-3d-cpp PROPERTY CXX_STANDARD 11)
 target_link_libraries(test-convolution-3d-cpp ${LIB_NAME})
@@ -75,6 +74,36 @@ if(WIN32)
     configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
       test-convolution-3d-cpp.vcxproj.user @ONLY)
     set_property(TEST test-convolution-3d-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
+
+add_executable(test-convolution-3d-fwd-ref-cpp test_convolution_3d_fwd_ref.cpp)
+set_property(TARGET test-convolution-3d-fwd-ref-cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(test-convolution-3d-fwd-ref-cpp ${LIB_NAME})
+add_test(test-convolution-3d-fwd-ref-cpp test-convolution-3d-fwd-ref-cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      test-convolution-3d-fwd-ref-cpp.vcxproj.user @ONLY)
+    set_property(TEST test-convolution-3d-fwd-ref-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
+
+add_executable(test-convolution-3d-bkw-weights-ref-cpp test_convolution_3d_bkw_weights_ref.cpp)
+set_property(TARGET test-convolution-3d-bkw-weights-ref-cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(test-convolution-3d-bkw-weights-ref-cpp ${LIB_NAME})
+add_test(test-convolution-3d-bkw-weights-ref-cpp test-convolution-3d-bkw-weights-ref-cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      test-convolution-3d-bkw-weights-ref-cpp.vcxproj.user @ONLY)
+    set_property(TEST test-convolution-3d-bkw-weights-ref-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
+
+add_executable(test-convolution-3d-bkw-data-ref-cpp test_convolution_3d_bkw_data_ref.cpp)
+set_property(TARGET test-convolution-3d-bkw-data-ref-cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(test-convolution-3d-bkw-data-ref-cpp ${LIB_NAME})
+add_test(test-convolution-3d-bkw-data-ref-cpp test-convolution-3d-bkw-data-ref-cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      test-convolution-3d-bkw-data-ref-cpp.vcxproj.user @ONLY)
+    set_property(TEST test-convolution-3d-bkw-data-ref-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
 endif()
 
 add_executable(simple-training-net-c simple_training_net.c)
