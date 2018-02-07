@@ -120,7 +120,6 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
                                             const size_t w_ix = ((((ocb*ICB + icb)*KD + kd)*KH + kh)*KW + kw)*NBLOCK*NBLOCK;
                                             // HACK assume no groups for now
                                             for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-#                                               pragma omp simd
                                                 for (int _ic = 0; _ic < NBLOCK; ++_ic) {
                                                     a[_oc] += src[src_ix + _ic] * weights[w_ix + NBLOCK*_oc + _ic];
                                                 }
@@ -131,10 +130,10 @@ void _cpu_convolution3D_nCdhw16c_fwd_t<with_relu, src_type, wei_type, dst_type, 
                             }
                             const size_t dst_ix = ((((mb*OCB + ocb)*OD + od)*OH + oh)*OW + ow)*NBLOCK;
 #                           pragma omp simd
-                            for (int ocb = 0; ocb < NBLOCK; ++ocb) {
-                                if (with_relu && a[ocb] < (acc_data_t)0)
-                                    a[ocb] = (acc_data_t)((float)a[ocb] * nslope);
-                                dst[dst_ix + ocb] = saturate<dst_data_t>(a[ocb]);
+                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                if (with_relu && a[_oc] < (acc_data_t)0)
+                                    a[_oc] = (acc_data_t)((float)a[_oc] * nslope);
+                                dst[dst_ix + _oc] = saturate<dst_data_t>(a[_oc]);
                             }
                         }
                     }
