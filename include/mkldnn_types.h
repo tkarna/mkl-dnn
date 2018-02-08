@@ -284,6 +284,12 @@ typedef enum {
     mkldnn_conv3D
 } mkldnn_conv_kind_t;
 
+/** Kind of convolution. Define whether to use 2D or 3D convolution. */
+typedef enum {
+    mkldnn_pool2D,
+    mkldnn_pool3D
+} mkldnn_pool_kind_t;
+
 /** Kinds of propagation. */
 typedef enum {
     /* TODO: suggest renames */
@@ -339,6 +345,8 @@ typedef enum {
     mkldnn_softmax,
     /** A pooling primitive. */
     mkldnn_pooling,
+    /** A 3D pooling primitive. */
+    mkldnn_pooling3D,
     /** An LRN primitive. */
     mkldnn_lrn,
     /** An batch normalization primitive. */
@@ -533,6 +541,7 @@ typedef struct {
     /** The kind of padding to use. */
     mkldnn_padding_kind_t padding_kind;
     mkldnn_conv_kind_t conv_kind;
+
     /** The accumulator data type. Initialized automatically. */
     mkldnn_data_type_t accum_data_type;
 } mkldnn_convolution_desc_t;
@@ -623,6 +632,7 @@ typedef struct {
     mkldnn_dims_t padding[2];
     /** The kind of padding to use. */
     mkldnn_padding_kind_t padding_kind;
+    mkldnn_pool_kind_t pool_kind;
     /** The accumulator data type. Initialized automatically. */
     mkldnn_data_type_t accum_data_type;
 } mkldnn_pooling_desc_t;

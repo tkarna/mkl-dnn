@@ -41,6 +41,7 @@
 #include "cpu/jit_uni_pooling.hpp"
 #include "cpu/jit_avx512_core_i8i8_pooling.hpp"
 #include "cpu/ref_pooling.hpp"
+#include "cpu/ref_pooling3D.hpp"
 #include "cpu/nchw_pooling.hpp"
 #include "cpu/jit_avx512_common_lrn.hpp"
 #include "cpu/jit_uni_lrn.hpp"
@@ -171,6 +172,8 @@ static const pd_create_f cpu_impl_list[] = {
     INSTANCE(nchw_pooling_bwd_t<f32>),
     INSTANCE(ref_pooling_fwd_t<f32>),
     INSTANCE(ref_pooling_bwd_t<f32>),
+    INSTANCE(ref_pooling3D_fwd_t<f32>),
+    INSTANCE(ref_pooling3D_bwd_t<f32>),
     /* pool (int) */
     INSTANCE(jit_avx512_core_i8i8_pooling_fwd_t),
     INSTANCE(ref_pooling_fwd_t<s32>),
@@ -179,6 +182,12 @@ static const pd_create_f cpu_impl_list[] = {
     INSTANCE(ref_pooling_fwd_t<u8, s32>),
     INSTANCE(ref_pooling_bwd_t<s32>),
     INSTANCE(ref_pooling_bwd_t<s16, s32>),
+    INSTANCE(ref_pooling3D_fwd_t<s32>),
+    INSTANCE(ref_pooling3D_fwd_t<s16, s32>),
+    INSTANCE(ref_pooling3D_fwd_t<s8, s32>),
+    INSTANCE(ref_pooling3D_fwd_t<u8, s32>),
+    INSTANCE(ref_pooling3D_bwd_t<s32>),
+    INSTANCE(ref_pooling3D_bwd_t<s16, s32>),
     /* lrn */
     INSTANCE(jit_avx512_common_lrn_fwd_t),
     INSTANCE(jit_avx512_common_lrn_bwd_t),
