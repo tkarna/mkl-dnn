@@ -167,7 +167,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     static status_t execute(const cpu_reorder_pd_t *pd,
         const data_t<type_i> *input, data_t<type_o> *output) {
         DECLARE_COMMON_PARAMS();
-        printf("\nAmrita: my code of reorder from ncdhw to ndhwc or other way called.\n");
+        //printf("\nAmrita: my code of reorder from ncdhw to ndhwc or other way called.\n");
 
         const auto &dims = input_d.dims();
         const auto is = input_d.blocking_desc().strides[0];
@@ -182,9 +182,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 for (int w = 0; w < dims[4]; ++w) {
 #                   pragma omp simd
                     for (int c = 0; c < dims[1]; ++c) {
-                        o[w * os[4] + c] = qz<data_t<type_i>,
-                            data_t<type_o>>()(i[c * is[1] + w],
-                            o[w * os[4] + c], alpha, beta, rmode);
+                        o[w * os[4] + c] = data_t<type_o>(i[c * is[1] + w]);
                     }
                 }
 
@@ -193,9 +191,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 for (int w = 0; w < dims[4]; ++w) {
 #                   pragma omp simd
                     for (int c = 0; c < dims[1]; ++c) {
-                        o[c * os[1] + w] = qz<data_t<type_i>,
-                            data_t<type_o>>()(i[w * is[4] + c],
-                            o[c * os[1] + w], alpha, beta, rmode);
+                        o[c * os[1] + w] = data_t<type_o>(i[w * is[4] + c]);                            
                     }
                 }
             }
