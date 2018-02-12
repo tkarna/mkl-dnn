@@ -26,42 +26,8 @@
 #include <chrono>
 typedef std::chrono::high_resolution_clock Clock;
 
-// TODO modify to run only fwd convolution
-// TODO N times
-// TODO with correct input sizes
-// TODO time it
-
 using namespace mkldnn;
 
-float TOLERANCE = 1e-16;
-
-void print_array_3d(std::string name, float* array, int n, int m, int l) {
-    std::cout << name << ":" << std::endl;
-    for (int i=0; i<n; i++){
-        for (int j=0; j<m; j++) {
-            for (int k=0; k<l; k++) {
-                std::cout << std::setw(4) << array[m*l*i + l*j + k];
-            }
-            std::cout << std::endl;
-        }
-        std::cout << std::endl;
-    }
-}
-
-bool check_result(float* array, float* correct, const int len) {
-    float error = 0;
-    for (int i = 0; i < len; i++) {
-        error += abs(array[i] - correct[i]);
-    }
-    bool success =  error < TOLERANCE;
-    if (success) {
-        std::cout << "SUCCESS" << std::endl;
-    } else {
-        std::cout << "FAILED" << std::endl;
-        std::cout << "Error: " << error << std::endl;
-    }
-    return success;
-}
 
 bool assert_convolution(const int in_height, const int in_width, const int in_depth,
                         const int weights_height, const int weights_width, const int weights_depth,
