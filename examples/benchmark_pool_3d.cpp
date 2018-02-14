@@ -38,11 +38,13 @@ void print_array_3d(std::string name, float* array, int n, int m, int l) {
     }
 }
 
-void compute_fwd_pool(const memory &src_mem,
+void compute_fwd_pool(algorithm pooling_alg,
+                      const memory &src_mem,
                       const memory &dst_mem,
                       const memory::dims &strides,
                       const memory::dims &kernel,
-                      const memory::dims &padding) {
+                      const memory::dims &padding
+                      ) {
 
     auto cpu_engine = engine(engine::cpu, 0);
 
@@ -52,11 +54,9 @@ void compute_fwd_pool(const memory &src_mem,
     auto src_md = src_pd.desc();
     auto dst_md = dst_pd.desc();
 
-    auto pooling_op = pooling_max;
-
     /* op descriptors */
     auto pool_fwd_desc = pooling_forward::desc(prop_kind::forward,
-        pooling_op, src_md, dst_md, strides, kernel, padding, padding,
+        pooling_alg, src_md, dst_md, strides, kernel, padding, padding,
                                                padding_kind::zero);
 
     /* primitive op descriptors */
@@ -64,7 +64,7 @@ void compute_fwd_pool(const memory &src_mem,
         pooling_forward::primitive_desc(pool_fwd_desc, cpu_engine);
 
     /* test if we need workspace */
-    bool with_workspace = pooling_op == pooling_max; // NOTE only for forward op
+    bool with_workspace = pooling_alg == pooling_max; // NOTE only for forward op
 
     auto ws_pd = with_workspace ? pool_fwd_pd.workspace_primitive_desc() : dst_mem.get_primitive_desc();
     auto ws_mem = with_workspace ? memory(ws_pd) : dst_mem;
@@ -76,7 +76,6 @@ void compute_fwd_pool(const memory &src_mem,
 
     // create network array
     std::vector<primitive> net;
-
 
     auto src_dims = src_md.data.dims;
     auto dst_dims = dst_md.data.dims;
@@ -105,7 +104,8 @@ void compute_fwd_pool(const memory &src_mem,
 
 }
 
-bool time_pooling_3d(const int nbatch, const int in_channels, const int out_channels,
+void time_pooling_3d(algorithm pooling_alg,
+                     const int nbatch, const int in_channels, const int out_channels,
                      const int in_height, const int in_width, const int in_depth,
                      const int ker_height,const int ker_width, const int ker_depth,
                      const int out_height, const int out_width, const int out_depth,
@@ -147,40 +147,33 @@ bool time_pooling_3d(const int nbatch, const int in_channels, const int out_chan
     }
     }}
 
-    compute_fwd_pool(src_memory,
-                     dst_memory,
+    compute_fwd_pool(pooling_alg, src_memory, dst_memory,
                      strides, kernel, padding);
 
-    return true;
 }
 
-bool test_pool_3d(const int insize, const int bs=1) {
+void test_pool_3d(algorithm pooling_alg, const int insize, const int bs=1) {
     const int ic=16;
     const int ih=insize, iw=insize, id=insize;
     const int kh=2, kw=2, kd=2;
     const int oh=ih-kh+1, ow=iw-kw+1, od=id-kd+1;
-    return time_pooling_3d(bs, ic, ic, ih, iw, id, kh, kw, kd, oh, ow, od);
+    time_pooling_3d(pooling_alg, bs, ic, ic, ih, iw, id, kh, kw, kd, oh, ow, od);
 }
 
 int main(int argc, char **argv) {
-    bool success = true;
     try {
+        auto pooling_alg = pooling_max;
         std::vector<int> in_sizes = {32, 64, 128};
         std::vector<int> batch_sizes = {1, 4, 8};
         for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
             for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
-                success = success && test_pool_3d(*s, *mb);
+                test_pool_3d(pooling_alg, *s, *mb);
             }
-        }
-        if (success) {
-            std::cout << "All tests passed successfully." << std::endl;
-        } else {
-            std::cout << "Some tests FAILED." << std::endl;
         }
     }
     catch(error& e) {
         std::cerr << "status: " << e.status << std::endl;
         std::cerr << "message: " << e.message << std::endl;
     }
-    return success - 1;
+    return 0;
 }
