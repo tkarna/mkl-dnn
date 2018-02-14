@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_REF_POOLING_HPP
-#define CPU_REF_POOLING_HPP
+#ifndef CPU_REF_POOLING3D_HPP
+#define CPU_REF_POOLING3D_HPP
 
 #include <assert.h>
 
@@ -30,14 +30,14 @@ namespace impl {
 namespace cpu {
 
 template <impl::data_type_t data_type, impl::data_type_t acc_type = data_type>
-struct ref_pooling_fwd_t: public cpu_primitive_t {
+struct ref_pooling3D_fwd_t: public cpu_primitive_t {
     struct pd_t: public cpu_pooling_fwd_pd_t {
         pd_t(engine_t *engine, const pooling_desc_t *adesc,
                 const primitive_attr_t *attr,
                 const pooling_fwd_pd_t *hint_fwd_pd)
             : cpu_pooling_fwd_pd_t(engine, adesc, attr, hint_fwd_pd) {}
 
-        DECLARE_COMMON_PD_T(ref_pooling_fwd_t);
+        DECLARE_COMMON_PD_T(ref_pooling3D_fwd_t);
 
         virtual status_t init() override {
             using namespace prop_kind;
@@ -53,7 +53,7 @@ struct ref_pooling_fwd_t: public cpu_primitive_t {
                 && utils::everyone_is(data_type, src_pd()->desc()->data_type,
                         dst_pd()->desc()->data_type)
                 && desc()->accum_data_type == acc_type
-                && desc()->pool_kind == pool_kind::pool2D
+                && this->desc()->pool_kind == pool_kind::pool3D
                 && attr()->has_default_values();
             if (!ok) return status::unimplemented;
 
@@ -66,9 +66,33 @@ struct ref_pooling_fwd_t: public cpu_primitive_t {
 
             return status::success;
         }
+
+        inline int MB() const { return desc_.src_desc.dims[0]; }
+        inline int C() const { return desc_.src_desc.dims[1]; }
+        inline int ID() const { return desc_.src_desc.dims[2]; }
+        inline int IH() const { return desc_.src_desc.dims[3]; }
+        inline int IW() const { return desc_.src_desc.dims[4]; }
+        inline int OD() const { return desc_.dst_desc.dims[2]; }
+        inline int OH() const { return desc_.dst_desc.dims[3]; }
+        inline int OW() const { return desc_.dst_desc.dims[4]; }
+
+        inline int KD() const { return desc_.kernel[0]; }
+        inline int KH() const { return desc_.kernel[1]; }
+        inline int KW() const { return desc_.kernel[2]; }
+
+        inline int KSD() const { return desc_.strides[0]; }
+        inline int KSH() const { return desc_.strides[1]; }
+        inline int KSW() const { return desc_.strides[2]; }
+
+        inline int padD1() const { return desc_.padding[0][0]; }
+        inline int padD2() const { return desc_.padding[1][0]; }
+        inline int padT() const { return desc_.padding[0][1]; }
+        inline int padB() const { return desc_.padding[1][1]; }
+        inline int padL() const { return desc_.padding[0][2]; }
+        inline int padR() const { return desc_.padding[1][2]; }
     };
 
-    ref_pooling_fwd_t(const pd_t *pd, const input_vector &inputs,
+    ref_pooling3D_fwd_t(const pd_t *pd, const input_vector &inputs,
             const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
 
@@ -86,14 +110,14 @@ private:
 };
 
 template <impl::data_type_t data_type, impl::data_type_t acc_type = data_type>
-struct ref_pooling_bwd_t: public cpu_primitive_t {
+struct ref_pooling3D_bwd_t: public cpu_primitive_t {
     struct pd_t: public cpu_pooling_bwd_pd_t {
         pd_t(engine_t *engine, const pooling_desc_t *adesc,
-                const primitive_attr_t *attr,
-                const pooling_fwd_pd_t *hint_fwd_pd)
+             const primitive_attr_t *attr,
+             const pooling_fwd_pd_t *hint_fwd_pd)
             : cpu_pooling_bwd_pd_t(engine, adesc, attr, hint_fwd_pd) {}
 
-        DECLARE_COMMON_PD_T(ref_pooling_bwd_t);
+        DECLARE_COMMON_PD_T(ref_pooling3D_bwd_t);
 
         virtual status_t init() override {
             using namespace prop_kind;
@@ -109,9 +133,9 @@ struct ref_pooling_bwd_t: public cpu_primitive_t {
                         diff_src_pd()->desc()->data_type)
                 && utils::implication(desc()->alg_kind == pooling_max,
                         hint_fwd_pd_ && hint_fwd_pd_->workspace_pd()
-                        && hint_fwd_pd_->workspace_pd()->engine()->kind()
+                      && hint_fwd_pd_->workspace_pd()->engine()->kind()
                                 == engine_kind::cpu)
-                && desc()->pool_kind == pool_kind::pool2D
+                && this->desc()->pool_kind == pool_kind::pool3D
                 && attr()->has_default_values();
             if (!ok) return status::unimplemented;
 
@@ -120,10 +144,34 @@ struct ref_pooling_bwd_t: public cpu_primitive_t {
 
             return status::success;
         }
+
+        inline int MB() const { return desc_.src_desc.dims[0]; }
+        inline int C() const { return desc_.src_desc.dims[1]; }
+        inline int ID() const { return desc_.src_desc.dims[2]; }
+        inline int IH() const { return desc_.src_desc.dims[3]; }
+        inline int IW() const { return desc_.src_desc.dims[4]; }
+        inline int OD() const { return desc_.dst_desc.dims[2]; }
+        inline int OH() const { return desc_.dst_desc.dims[3]; }
+        inline int OW() const { return desc_.dst_desc.dims[4]; }
+
+        inline int KD() const { return desc_.kernel[0]; }
+        inline int KH() const { return desc_.kernel[1]; }
+        inline int KW() const { return desc_.kernel[2]; }
+
+        inline int KSD() const { return desc_.strides[0]; }
+        inline int KSH() const { return desc_.strides[1]; }
+        inline int KSW() const { return desc_.strides[2]; }
+
+        inline int padD1() const { return desc_.padding[0][0]; }
+        inline int padD2() const { return desc_.padding[1][0]; }
+        inline int padT() const { return desc_.padding[0][1]; }
+        inline int padB() const { return desc_.padding[1][1]; }
+        inline int padL() const { return desc_.padding[0][2]; }
+        inline int padR() const { return desc_.padding[1][2]; }
     };
 
-    ref_pooling_bwd_t(const pd_t *pd, const input_vector &inputs,
-            const output_vector &outputs)
+    ref_pooling3D_bwd_t(const pd_t *pd, const input_vector &inputs,
+                      const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
     typedef typename prec_traits<data_type>::type data_t;
     typedef typename prec_traits<acc_type>::type acc_data_t;

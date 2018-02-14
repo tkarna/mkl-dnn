@@ -730,7 +730,7 @@ mkldnn_status_t MKLDNN_API mkldnn_relu_backward_desc_init(
  *
  * \f[dst[u][c][in] =
  *    \frac{\exp(src[ou][c][in]) - \max\limits_{c}(src[ou][c][in])}
- *    {\sum\limits_{c}\{\exp(src[ou][c][in]) 
+ *    {\sum\limits_{c}\{\exp(src[ou][c][in])
  *    - \max\limits_{c}(src[ou][c][in])\}},\f]
  *
  * where \f$ou, iu\f$ are outer and inner sizes repectively, defined
@@ -748,7 +748,7 @@ mkldnn_status_t MKLDNN_API mkldnn_softmax_forward_desc_init(
 
 /** @addtogroup c_api_pooling Pooling
  * A primitive to perform max, min, or average pooling.
- * 
+ *
  * Max pooling:
  * \f[dst[n][oc][oh][ow] =
  *     \max\limits_{kw,kh}
@@ -773,7 +773,7 @@ mkldnn_status_t MKLDNN_API mkldnn_softmax_forward_desc_init(
  * @note if @p padding_r is @c NULL, the padding is supposed to be symmetric
  *
  * @todo clarify! */
-mkldnn_status_t MKLDNN_API mkldnn_pooling_forward_desc_init(
+    mkldnn_status_t MKLDNN_API mkldnn_pooling_forward_desc_init(
         mkldnn_pooling_desc_t *pool_desc, mkldnn_prop_kind_t prop_kind,
         mkldnn_alg_kind_t alg_kind, const mkldnn_memory_desc_t *src_desc,
         const mkldnn_memory_desc_t *dst_desc, const mkldnn_dims_t strides,
@@ -786,7 +786,7 @@ mkldnn_status_t MKLDNN_API mkldnn_pooling_forward_desc_init(
  * padding_kind.
  *
  * @todo clarify! */
-mkldnn_status_t MKLDNN_API mkldnn_pooling_backward_desc_init(
+    mkldnn_status_t MKLDNN_API mkldnn_pooling_backward_desc_init(
         mkldnn_pooling_desc_t *pool_desc, mkldnn_alg_kind_t alg_kind,
         const mkldnn_memory_desc_t *diff_src_desc,
         const mkldnn_memory_desc_t *diff_dst_desc, const mkldnn_dims_t strides,
@@ -797,8 +797,8 @@ mkldnn_status_t MKLDNN_API mkldnn_pooling_backward_desc_init(
 
 /** @addtogroup c_api_lrn LRN
  * A primitive to perform local response normalization (LRN) across or within
- * channels. 
- * 
+ * channels.
+ *
  * LRN accross channels:
  * \f[dst[n][c][h][w] = \left\{k + \frac{\alpha}{n_{l}}
  *                      \sum\limits_{i=-(n_{l}-1)/2}^{(n_{l}+1)/2}
@@ -818,7 +818,7 @@ mkldnn_status_t MKLDNN_API mkldnn_pooling_backward_desc_init(
  * (possible values are #mkldnn_forward_training or #mkldnn_forward_inference),
  * @p alg_kind, memory descriptor @p data_desc, and regularization
  * parameters @p local_size, @p alpha, @p beta, and @p k. */
-mkldnn_status_t MKLDNN_API mkldnn_lrn_forward_desc_init(
+    mkldnn_status_t MKLDNN_API mkldnn_lrn_forward_desc_init(
         mkldnn_lrn_desc_t *lrn_desc, mkldnn_prop_kind_t prop_kind,
         mkldnn_alg_kind_t alg_kind, const mkldnn_memory_desc_t *data_desc,
         int local_size, float alpha, float beta, float k);
@@ -826,7 +826,7 @@ mkldnn_status_t MKLDNN_API mkldnn_lrn_forward_desc_init(
 /** Initializes an @p lrn_desc for backward propagation using @p alg_kind,
  * memory descriptors @p data_desc, and @p diff_data_desc, and regularization
  * parameters @p local_size, @p alpha, @p beta, and @p k. */
-mkldnn_status_t MKLDNN_API mkldnn_lrn_backward_desc_init(
+    mkldnn_status_t MKLDNN_API mkldnn_lrn_backward_desc_init(
         mkldnn_lrn_desc_t *lrn_desc, mkldnn_alg_kind_t alg_kind,
         const mkldnn_memory_desc_t *diff_data_desc,
         const mkldnn_memory_desc_t *data_desc, int local_size, float alpha,
@@ -842,7 +842,7 @@ mkldnn_status_t MKLDNN_API mkldnn_lrn_backward_desc_init(
  * where \f$\gamma[c], \beta[c]\f$ are weights and bias for a channel and,
  *
  * \f$\mu[c] = \frac{1}{NHW} \sum\limits_{whn} src[n][c][h][w]\f$,
- * \f$\sigma[c] = \frac{1}{NHW} \sum\limits_{whn} 
+ * \f$\sigma[c] = \frac{1}{NHW} \sum\limits_{whn}
  *                              (src[n][c][h][w] - \mu[c])^2\f$,
  *
  * and eps is a constant to improve numerical stability.
@@ -855,7 +855,7 @@ mkldnn_status_t MKLDNN_API mkldnn_lrn_backward_desc_init(
  * are #mkldnn_use_global_stats and #mkldnn_use_scaleshift).
  *
  * @sa mkldnn_batch_normalization_desc_t */
-mkldnn_status_t MKLDNN_API mkldnn_batch_normalization_forward_desc_init(
+    mkldnn_status_t MKLDNN_API mkldnn_batch_normalization_forward_desc_init(
         mkldnn_batch_normalization_desc_t *bnrm_desc,
         mkldnn_prop_kind_t prop_kind, const mkldnn_memory_desc_t *data_desc,
         float epsilon, unsigned flags);
@@ -867,7 +867,7 @@ mkldnn_status_t MKLDNN_API mkldnn_batch_normalization_forward_desc_init(
  * #mkldnn_use_scaleshift).
  *
  * @sa mkldnn_batch_normalization_desc_t */
-mkldnn_status_t MKLDNN_API mkldnn_batch_normalization_backward_desc_init(
+    mkldnn_status_t MKLDNN_API mkldnn_batch_normalization_backward_desc_init(
         mkldnn_batch_normalization_desc_t *bnrm_desc,
         mkldnn_prop_kind_t prop_kind,
         const mkldnn_memory_desc_t *diff_data_desc,
@@ -880,9 +880,9 @@ mkldnn_status_t MKLDNN_API mkldnn_batch_normalization_backward_desc_init(
  * A primitive to compute an inner product.
  * Inner product layer is also known as fully connected layer.
  * with spatial dimension:
- * 
+ *
  * \f[dst[n][oc] = \sum\limits_{ic, kh, kw}
- *                 src[n][ic][kh][kw] \cdot weights[oc][ic][kh][kw] 
+ *                 src[n][ic][kh][kw] \cdot weights[oc][ic][kh][kw]
  *                 + bias[oc]\f]
  * @{ */
 
