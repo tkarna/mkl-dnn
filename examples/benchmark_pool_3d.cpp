@@ -77,33 +77,31 @@ void compute_fwd_pool(const memory &src_mem,
     // create network array
     std::vector<primitive> net;
 
-    // push to net
-    net.push_back(pool_op);
-
-    // Execute
-    stream(stream::kind::eager).submit(net).wait();
 
     auto src_dims = src_md.data.dims;
     auto dst_dims = dst_md.data.dims;
-    printf("input %dx%dx%d kernel %dx%dx%d in_ch=%d out_ch=%d\n",
+    int batch_size = src_dims[0];
+    printf("Input %dx%dx%d kernel %dx%dx%d channels=%d bs=%d\n",
            src_dims[2], src_dims[3], src_dims[4],
            kernel[0], kernel[1], kernel[2],
-           dst_dims[1], dst_dims[1]
+           dst_dims[1], batch_size
           );
 
     const int ntime = 25;
     float complexity = ((float)dst_dims[2])*dst_dims[3]*dst_dims[4]*kernel[0]*kernel[1]*kernel[2]*dst_dims[1];
     std::cout << "Total flops: " << complexity << "\n";
 
-    auto t1 = Clock::now();
     for (int it = 0; it < ntime; it++) {
-        // Execute
-        stream(stream::kind::eager).submit(net).wait();
+        net.push_back(pool_op);
     }
+    // Execute
+    auto t1 = Clock::now();
+    stream(stream::kind::eager).submit(net).wait();
     auto t2 = Clock::now();
+
     float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
     std::cout << "Duration: " << duration << " ms" << "\n";
-    std::cout << "MFlops/s: " << complexity/1000./1000./duration*1000. << "\n";
+    std::cout << "MFlops/s: " << complexity/1000./1000./duration*1000.*batch_size << "\n";
 
 }
 
@@ -156,11 +154,9 @@ bool time_pooling_3d(const int nbatch, const int in_channels, const int out_chan
     return true;
 }
 
-bool test_pool_3d() {
-    printf("\nRunning 3D fwd pooling benchmark\n");
-    const int bs=1;
-    const int ic=32;
-    const int ih=32, iw=32, id=32;
+bool test_pool_3d(const int insize, const int bs=1) {
+    const int ic=16;
+    const int ih=insize, iw=insize, id=insize;
     const int kh=2, kw=2, kd=2;
     const int oh=ih-kh+1, ow=iw-kw+1, od=id-kd+1;
     return time_pooling_3d(bs, ic, ic, ih, iw, id, kh, kw, kd, oh, ow, od);
@@ -169,8 +165,13 @@ bool test_pool_3d() {
 int main(int argc, char **argv) {
     bool success = true;
     try {
-        success = success
-            && test_pool_3d();
+        std::vector<int> in_sizes = {32, 64, 128};
+        std::vector<int> batch_sizes = {1, 4, 8};
+        for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
+            for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
+                success = success && test_pool_3d(*s, *mb);
+            }
+        }
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
         } else {
