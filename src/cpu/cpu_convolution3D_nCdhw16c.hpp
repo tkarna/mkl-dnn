@@ -69,7 +69,6 @@ struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
                         && utils::implication(src_type == f32,
                             this->cdesc_().bias_desc.data_type == f32))
                 && this->attr()->has_default_values();
-                //if (ok) printf("Check 16ch fwd convolution: OK\n");
             return ok ? status::success : status::unimplemented;
         }
 
@@ -120,7 +119,7 @@ struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
             if (this->dst_pd_.desc()->format == any)
                 CHECK(this->dst_pd_.set_format(nCdhw16c));
             if (this->weights_pd_.desc()->format == any)
-                CHECK(this->weights_pd_.set_format(this->with_groups() ? gOIdhw16o16i : OIdhw16o16i));
+                CHECK(this->weights_pd_.set_format(this->with_groups() ? gOIdhw16i16o : OIdhw16i16o));
             if (this->bias_pd_.desc()->format == any)
                 CHECK(this->bias_pd_.set_format(x));
             return status::success;
@@ -195,7 +194,6 @@ struct cpu_convolution3D_nCdhw16c_bwd_data_t: public cpu_primitive_t {
                 && this->desc()->diff_src_desc.dims[1] % 16 == 0
                 && this->desc()->diff_dst_desc.dims[1] % 16 == 0
                 && this->attr()->has_default_values();
-                //if (ok) printf("Check 16ch bkw data convolution: OK\n");
             return ok ? status::success : status::unimplemented;
         }
 
@@ -305,7 +303,6 @@ struct cpu_convolution3D_nCdhw16c_bwd_weights_t: public cpu_primitive_t {
                         this->desc()->diff_bias_desc.data_type
                         == diff_wei_type)
                 && this->attr()->has_default_values();
-                //if (ok) printf("Check 16ch bkw weights convolution: OK\n");
             return ok ? status::success : status::unimplemented;
         }
         inline int MB() const { return this->desc()->src_desc.dims[0]; }

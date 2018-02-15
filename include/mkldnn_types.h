@@ -255,6 +255,13 @@ typedef enum {
      * input and output channels data laid out in memory in 16-element blocks.
      */
     mkldnn_gOIdhw16o16i,
+    /** 5D weights tensor in the @c oidhw format with both input and output
+     * channels data laid out in memory in 16-element blocks. */
+    mkldnn_OIdhw16i16o,
+    /** 6D weights tensor in the blocked version of @c goidhw format with both
+     * input and output channels data laid out in memory in 16-element blocks.
+     */
+    mkldnn_gOIdhw16i16o,
     /** 5D weights tensor in the @c oidhw format with output
      * channels data laid out in memory in 16-element blocks. */
     mkldnn_Oidhw16o,

@@ -23,8 +23,6 @@
 
 using namespace mkldnn;
 
-float TOLERANCE = 1e-16;
-
 void print_array_3d(std::string name, float* array, int n, int m, int l) {
     std::cout << name << ":" << std::endl;
     for (int i=0; i<n; i++){
@@ -38,18 +36,24 @@ void print_array_3d(std::string name, float* array, int n, int m, int l) {
     }
 }
 
-bool check_result(std::string array_name, float* array, float* correct, const int len) {
-    float error = 0;
+bool check_result(std::string array_name, float* array, float* correct,
+                  const int len, float tolerance, bool verbose=false) {
+    /* Computes the average abs relative error in the output array */
+    float rel_error = 0;
     for (int i = 0; i < len; i++) {
-        error += std::abs(array[i] - correct[i]);
+        float re = (array[i] - correct[i])/correct[i];
+        if (verbose && std::abs(re) > tolerance) {
+            printf(" i=%d res=%.4f cor=%.4f rel_err=%.4g\n", i, array[i], correct[i], re);
+        }
+        rel_error = std::max(rel_error, std::abs(re));
     }
-    bool success =  error < TOLERANCE;
+    bool success =  rel_error < tolerance;
     std::cout << "Test " << array_name << ": ";
     if (success) {
         std::cout << "SUCCESS" << std::endl;
     } else {
         std::cout << "FAILED" << std::endl;
-        std::cout << "  Error: " << error << std::endl;
+        std::cout << "  Relative error: " << rel_error << std::endl;
     }
     return success;
 }
@@ -272,6 +276,7 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
                         const int weights_height, const int weights_width, const int weights_depth,
                         const int out_height, const int out_width, const int out_depth,
                         std::vector<float>& in_weights,
+                        float tolerance,
                         bool print_arrays = true
                        ){
 
@@ -316,17 +321,8 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
                                  cpu_engine}, vect_ref_dst.data());
 
     // assign input and weights data
-    for (int mb = 0; mb < nbatch; mb++) {
-    for (int c = 0; c < in_channels; c++) {
-    for (int i = 0; i < in_depth; i++) {
-        for (int j = 0; j < in_height; j++) {
-            for (int k = 0; k < in_width; k++) {
-                const size_t ix = (((mb*in_channels + c)*in_depth + i)*in_height + j)*in_width + k;
-                vect_src[ix] = (i+1)*(j+1)*(k+1);
-            }
-        }
-    }
-    }}
+    for (size_t i = 0; i < vect_src.size(); i++)
+        vect_src[i] = rand() % 25 + 1.0;
 
     vect_weights = in_weights;
 
@@ -359,8 +355,7 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
         print_array_3d("Output", vect_dst.data(), dst_dims[2], dst_dims[3], dst_dims[4]);
     }
     // Compute error
-
-    success = success && check_result("output", vect_dst.data(), vect_ref_dst.data(), vect_ref_dst.size());
+    success = success && check_result("output", vect_dst.data(), vect_ref_dst.data(), vect_ref_dst.size(), tolerance);
 
     return success;
 }
@@ -380,7 +375,7 @@ bool test_simple(const int ic=1, const int oc=1) {
         }
     }
     return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
-                              in_weights);
+                              in_weights, 1e-25);
 }
 
 bool test_full(const int ic=1, const int oc=1) {
@@ -391,116 +386,42 @@ bool test_full(const int ic=1, const int oc=1) {
     const int kh=3, kw=3, kd=3;
     int weights_len = oc*ic*kh*kw*kd;
     std::vector<float> in_weights(weights_len, 0);
-    for (int o = 0; o < oc; o++) {
-        for (int i = 0; i < ic; i++) {
-            for (int d = 0; d < kd; d++) {
-                for (int h = 0; h < kh; h++) {
-                    for (int w = 0; w < kw; w++) {
-                        const int ix = (((o*ic + i)*kd + d)*kh + h)*kw + w;
-                        in_weights[ix] = (w+1) + d - (i/4+1) + (o/4+1);
-                    }
-                }
-            }
-        }
-    }
+    for (size_t i = 0; i < in_weights.size(); i++)
+        in_weights[i] = (float)(rand() % 100)/11.2 + 1.0;
     return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
-                        in_weights, false);
-
+                              in_weights, 1e-5, false);
 }
 
-bool test_asymmetric() {
-    std::cout << "\nRunning 3D convolution test: asymmetric\n";
-    const int bs=1, ic=16, oc=32;
-    const int ih=5, iw=5, id=4;
-    const int oh=3, ow=3, od=2;
+bool test_full_large(const int ic=1, const int oc=1) {
+    printf("\nRunning 3D fwd convolution test: full large IC=%d OC=%d\n", ic, oc);
+    const int bs=5;
+    const int ih=19, iw=19, id=17;
+    const int oh=17, ow=17, od=15;
     const int kh=3, kw=3, kd=3;
-    int in_len = bs*ic*ih*iw*od;
-    int out_len = bs*oc*oh*ow*od;
     int weights_len = oc*ic*kh*kw*kd;
     std::vector<float> in_weights(weights_len, 0);
-    std::vector<float> in_diff_output_weights(in_len, 0);
-    std::vector<float> in_diff_output_data(in_len, 0);
-    std::vector<float> correct_output(out_len, 0);
-    std::vector<float> correct_diff_weights(weights_len, 0);
-    std::vector<float> correct_diff_input(in_len, 0);
-    for (int o = 0; o < oc; o++) {
-        for (int i = 0; i < ic; i++) {
-            for (int d = 0; d < kd; d++) {
-                for (int h = 0; h < kh; h++) {
-                    for (int w = 0; w < kw; w++) {
-                        const int ix = (((o*ic + i)*kd + d)*kh + h)*kw + w;
-                        if ((h==1 || w==2) && (i % 4==0)  && (o % 4==0))
-                            in_weights[ix] = (w+1) + d - (i/4+1) + (o/4+1);
-                    }
-                }
-            }
-        }
-    }
-    in_diff_output_weights = {
-        1, 0, 0,
-        0, 0, 1,
-        0, 2, 0,
-        0, 0, 0,
-        0, 1, 0,
-        0, 0, 1
-    };
-    in_diff_output_data = {
-        1,  2,  3,
-        2,  4,  6,
-        3,  6,  9,
-        2,  4,  6,
-        4,  8, 12,
-        6, 12, 18
-    };
-    correct_output = {
-         94, 148, 202,
-        153, 240, 327,
-        212, 332, 452,
-        141, 220, 299,
-        229, 356, 483,
-        317, 492, 667
-    };
-    correct_diff_weights = {
-         45,  64,  83,
-         63,  90, 117,
-         81, 116, 151,
-         77, 110, 143,
-        108, 155, 202,
-        139, 200, 261,
-        109, 156, 203,
-        153, 220, 287,
-        197, 284, 371
-    };
-    correct_diff_input = {
-         0,  0,  0,  0,  0,
-         0,  4,  8, 12,  0,
-         0,  8, 16, 24,  0,
-         0, 12, 24, 36,  0,
-         0,  0,  0,  0,  0,
-         0,  0,  3,  6,  9,
-         0,  8, 23, 38, 21,
-         0, 16, 43, 70, 33,
-         0, 24, 51, 78,  9,
-         0,  0,  0,  0,  0,
-         3,  6, 15, 12, 18,
-         7, 16, 39, 34, 42,
-        12, 28, 66, 56, 66,
-         5, 16, 33, 30, 18,
-         3,  6,  9,  0,  0,
-         6, 12, 18,  0,  0,
-        14, 32, 50, 12,  0,
-        24, 56, 88, 24,  0,
-        10, 32, 54, 36,  0,
-         6, 12, 18,  0,  0
-    };
+    for (size_t i = 0; i < in_weights.size(); i++)
+        in_weights[i] = (float)(rand() % 100)/11.2 + 1.0;
     return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
-                        in_weights);
-
-
+                              in_weights, 1e-5, false);
 }
 
+bool test_full_large_int(const int ic=1, const int oc=1) {
+    printf("\nRunning 3D fwd convolution test: full large int IC=%d OC=%d\n", ic, oc);
+    const int bs=5;
+    const int ih=19, iw=19, id=17;
+    const int oh=17, ow=17, od=15;
+    const int kh=3, kw=3, kd=3;
+    int weights_len = oc*ic*kh*kw*kd;
+    std::vector<float> in_weights(weights_len, 0);
+    for (size_t i = 0; i < in_weights.size(); i++)
+        in_weights[i] = rand() % 8 + 1.0;
+    return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
+                              in_weights, 1e-25, false);
+}
 
 int main(int argc, char **argv) {
+    srand(2);
     bool success = true;
     try {
         success = success
@@ -519,7 +440,25 @@ int main(int argc, char **argv) {
             && test_full(16, 16)
             && test_full(16, 32)
             && test_full(32, 16)
-            && test_full(32, 32);
+            && test_full(32, 32)
+            && test_full_large(1, 1)
+            && test_full_large(2, 16)
+            && test_full_large(2, 32)
+            && test_full_large(1, 16)
+            && test_full_large(1, 32)
+            && test_full_large(16, 16)
+            && test_full_large(16, 32)
+            && test_full_large(32, 16)
+            && test_full_large(32, 32)
+            && test_full_large_int(1, 1)
+            && test_full_large_int(2, 16)
+            && test_full_large_int(2, 32)
+            && test_full_large_int(1, 16)
+            && test_full_large_int(1, 32)
+            && test_full_large_int(16, 16)
+            && test_full_large_int(16, 32)
+            && test_full_large_int(32, 16)
+            && test_full_large_int(32, 32);
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
         } else {

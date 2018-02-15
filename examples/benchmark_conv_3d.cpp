@@ -142,7 +142,7 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
            weights_height, weights_width, weights_depth,
            in_channels, out_channels, nbatch
           );
-    float complexity = ((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
+    float complexity = 2*((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
     std::cout << "flops: " << complexity << "\n";
 
     const int ntime = 15;

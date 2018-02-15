@@ -36,6 +36,10 @@ using namespace mkldnn::impl::memory_format;
 static const rpd_create_f cpu_reorder_impl_list[] = {
     /* fp32 <-> fp32 */
 
+    simple_reorder_t<f32, OIdhw16i16o, f32, OIdhw16o16i, fmt_order::keep>::pd_t::create,
+    simple_reorder_t<f32, OIdhw16i16o, f32, OIdhw16o16i, fmt_order::reverse>::pd_t::create,
+    simple_reorder_t<f32, gOIdhw16i16o, f32, gOIdhw16o16i, fmt_order::keep>::pd_t::create,
+    simple_reorder_t<f32, gOIdhw16i16o, f32, gOIdhw16o16i, fmt_order::reverse>::pd_t::create,
 
     simple_reorder_t<f32, oidhw, f32, Oidhw16o, fmt_order::keep>::pd_t::create,
     simple_reorder_t<f32, oidhw, f32, Oidhw16o, fmt_order::reverse>::pd_t::create,

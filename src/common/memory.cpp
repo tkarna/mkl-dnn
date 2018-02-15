@@ -103,6 +103,8 @@ status_t mkldnn_memory_desc_init(memory_desc_t *memory_desc, int ndims,
     case gOhIw16o4i:
     case OIdhw16o16i:
     case gOIdhw16o16i:
+    case OIdhw16i16o:
+    case gOIdhw16i16o:
     case Oidhw16o:
     case gOidhw16o:
         status = memory_desc_wrapper::compute_blocking(md);

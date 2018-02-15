@@ -1606,6 +1606,62 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     typename utils::enable_if<
+        (fmt_i == gOIdhw16i16o && fmt_o == gOIdhw16o16i)
+        || (fmt_i == OIdhw16i16o && fmt_o == OIdhw16o16i)
+    >::type>
+{
+    SIMPLE_IS_APPLICABLE(false);
+
+    static status_t execute(const cpu_reorder_pd_t *pd,
+        const data_t<type_i> *input, data_t<type_o> *output) {
+        DECLARE_COMMON_PARAMS();
+
+        constexpr bool w_groups = (fmt_i == gOIdhw16i16o);
+
+        const auto &dims = input_d.dims();
+        const int blksize = 16;
+
+        auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o) {
+            for (int ic = 0; ic < blksize; ++ic) {
+                for (int oc = 0; oc < blksize; ++oc) {
+                    const int o_idx = ic * blksize + oc;
+                    const int i_idx = oc * blksize + ic;
+                    o[o_idx] = (alpha == 1.0 && beta == 0.0)
+                        ? data_t<type_o>(i[i_idx])
+                        : data_t<type_o>(alpha * i[i_idx]
+                            + (beta ? beta * o[o_idx] : 0));
+                }
+            }
+        };
+
+        const int _G = w_groups ? dims[0] : 1;
+
+#       pragma omp parallel for collapse(6) schedule(static)
+        for (int g = 0; g < _G; ++g) {
+            for (int o = 0; o < dims[w_groups + 0] / blksize; ++o) {
+                for (int i = 0; i < dims[w_groups + 1] / blksize; ++i) {
+                    for (int h = 0; h < dims[w_groups + 2]; ++h) {
+                        for (int w = 0; w < dims[w_groups + 3]; ++w) {
+                            for (int d = 0; d < dims[w_groups + 4]; ++d) {
+                                auto i_ptr = &input[input_d.blk_off<!w_groups>(g,
+                                        o, i, d, h, w)];
+                                auto o_ptr = &output[output_d.blk_off<!w_groups>(g,
+                                        o, i, d, h, w)];
+                                ker(i_ptr, o_ptr);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return success;
+    }
+};
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+    typename utils::enable_if<
         (fmt_i == Oihw16o && fmt_o == Ohwi16o)
         || (fmt_i == gOihw16o && fmt_o == gOhwi16o)
     >::type>
