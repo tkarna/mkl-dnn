@@ -75,7 +75,8 @@ protected:
             if (weights_pd_.desc()->format == any){
                 //CHECK(weights_pd_.set_format(this->with_groups() ? goidhw : oidhw));
                 CHECK(weights_pd_.set_format(dhwio));
-            } else {
+            } 
+         } else {
             if (src_pd_.desc()->format == any)
                 CHECK(src_pd_.set_format(nchw));
             if (dst_pd_.desc()->format == any)
