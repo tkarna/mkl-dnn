@@ -76,7 +76,7 @@ void _ref_convolution3D_fwd_t<with_relu, src_type, wei_type, dst_type, acc_type>
 
     const float nslope = conf_.negative_slope();
 
-    auto ker = [=](acc_data_t &d, int g, int mb, int oc, int od, int oh, int ow) {
+    auto ker = [=](acc_data_t &d, int g, int mb, int oc, int od, int oh, int ow) {        
         for (int ic = 0; ic < IC; ++ic) {
             for (int kd = 0; kd < KD; ++kd) {
                 for (int kh = 0; kh < KH; ++kh) {

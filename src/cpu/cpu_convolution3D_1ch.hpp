@@ -67,7 +67,7 @@ struct _cpu_convolution3D_1ch_fwd_t: public cpu_primitive_t {
                         && utils::implication(src_type == f32,
                             this->cdesc_().bias_desc.data_type == f32))
                 && this->attr()->has_default_values();
-                if (ok) printf("Check 1ch fwd convolution: OK\n");
+                //if (ok) printf("Check 1ch fwd convolution: OK\n");
             return ok ? status::success : status::unimplemented;
         }
 
@@ -192,7 +192,7 @@ struct cpu_convolution3D_1ch_bwd_data_t: public cpu_primitive_t {
                 && this->desc()->conv_kind == conv_kind::conv3D
                 && this->desc()->diff_dst_desc.dims[1] % 16 == 0
                 && this->attr()->has_default_values();
-            if (ok) printf("Check 1ch bwd data convolution: OK\n");
+            //if (ok) printf("Check 1ch bwd data convolution: OK\n");
             return ok ? status::success : status::unimplemented;
         }
 
@@ -302,7 +302,7 @@ struct cpu_convolution3D_1ch_bwd_weights_t: public cpu_primitive_t {
                         this->desc()->diff_bias_desc.data_type
                         == diff_wei_type)
                 && this->attr()->has_default_values();
-            if (ok) printf("Check 1ch bwd weights convolution: OK\n");
+            //if (ok) printf("Check 1ch bwd weights convolution: OK\n");
             return ok ? status::success : status::unimplemented;
         }
         inline int MB() const { return this->desc()->src_desc.dims[0]; }
