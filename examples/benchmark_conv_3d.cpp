@@ -29,23 +29,18 @@ typedef std::chrono::high_resolution_clock Clock;
 using namespace mkldnn;
 
 
-bool assert_convolution(const int in_height, const int in_width, const int in_depth,
+bool assert_convolution(const int nbatch, const int in_channels, const int out_channels,
+                        const int in_height, const int in_width, const int in_depth,
                         const int weights_height, const int weights_width, const int weights_depth,
                         const int out_height, const int out_width, const int out_depth,
                         std::vector<float>& in_weights){
 
     auto cpu_engine = engine(engine::cpu, 0);
 
-    // Defining dimensions.
-    const int batch = 1;
-
-    const int out_channels = 32;
-    const int in_channels = 16;
-
     // Dimensions of memory to be allocated
-    memory::dims conv_src_dims = {batch, in_channels, in_depth, in_height, in_width};
+    memory::dims conv_src_dims = {nbatch, in_channels, in_depth, in_height, in_width};
     memory::dims conv_weights_dims = {out_channels, in_channels, weights_depth, weights_height, weights_width};
-    memory::dims conv_dst_dims = {batch, out_channels, out_depth, out_height, out_width};
+    memory::dims conv_dst_dims = {nbatch, out_channels, out_depth, out_height, out_width};
     memory::dims conv_bias_dims = {out_channels};
     memory::dims conv_strides = {1, 1, 1};
     auto conv_padding = {0, 0, 0};
@@ -53,8 +48,8 @@ bool assert_convolution(const int in_height, const int in_width, const int in_de
 
     // User provided memory - in a vector of 1D format.
     // 1D allocations src, dst, weights and biases.
-    std::vector<float> net_src(batch * in_channels * in_height * in_width * in_depth);
-    std::vector<float> net_dst(batch * out_channels * out_height * out_width * out_depth); 
+    std::vector<float> net_src(nbatch * in_channels * in_height * in_width * in_depth);
+    std::vector<float> net_dst(nbatch * out_channels * out_height * out_width * out_depth);
     // Accumulate dimensions for weights and bias 
     // And allocate vectors for those. 
     std::vector<float> conv_weights(std::accumulate(conv_weights_dims.begin(),
@@ -122,6 +117,7 @@ bool assert_convolution(const int in_height, const int in_width, const int in_de
     float *src_data_re = (float *)conv_src_memory.get_data_handle();
 
 
+    for (int mb = 0; mb < nbatch; mb++) {
     for (int c = 0; c < in_channels; c++) {
     for (int i = 0; i < in_depth; i++) {
         for (int j = 0; j < in_height; j++) {
@@ -134,18 +130,19 @@ bool assert_convolution(const int in_height, const int in_width, const int in_de
         }
     }
     }
+    }
 
     conv_weights = in_weights;
 
     // create network array
     std::vector<primitive> net;
 
-    printf("input %dx%dx%d kernel %dx%dx%d in_ch=%d out_ch=%d\n",
+    printf("input %dx%dx%d kernel %dx%dx%d in_ch=%d out_ch=%d bs=%d\n",
            in_height, in_width, in_depth,
            weights_height, weights_width, weights_depth,
-           in_channels, out_channels
+           in_channels, out_channels, nbatch
           );
-    float complexity = ((float)in_height)*in_width*in_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
+    float complexity = ((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
     std::cout << "flops: " << complexity << "\n";
 
     const int ntime = 100;
@@ -153,13 +150,12 @@ bool assert_convolution(const int in_height, const int in_width, const int in_de
         printf("Running src reorder\n");
         auto op = reorder(conv_user_src_memory, conv_src_memory);
         net.clear();
-        net.push_back(op);
-
-        auto t1 = Clock::now();
         for (int it = 0; it < ntime; it++) {
-            // Execute
-            stream(stream::kind::eager).submit(net).wait();
+            net.push_back(op);
         }
+        auto t1 = Clock::now();
+        // Execute
+        stream(stream::kind::eager).submit(net).wait();
         auto t2 = Clock::now();
         float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
         std::cout << "Duration: " << duration << " ms" << "\n";
@@ -169,13 +165,12 @@ bool assert_convolution(const int in_height, const int in_width, const int in_de
         printf("Running weight reorder\n");
         auto op = reorder(conv_user_weights_memory, conv_weights_memory);
         net.clear();
-        net.push_back(op);
-
-        auto t1 = Clock::now();
         for (int it = 0; it < ntime; it++) {
-            // Execute
-            stream(stream::kind::eager).submit(net).wait();
+            net.push_back(op);
         }
+        auto t1 = Clock::now();
+        // Execute
+        stream(stream::kind::eager).submit(net).wait();
         auto t2 = Clock::now();
         float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
         std::cout << "Duration: " << duration << " ms" << "\n";
@@ -184,73 +179,54 @@ bool assert_convolution(const int in_height, const int in_width, const int in_de
 
     printf("Running forward convolution\n");
     net.clear();
-    net.push_back(conv_op);
-
-    auto t1 = Clock::now();
     for (int it = 0; it < ntime; it++) {
-        // Execute
-        stream(stream::kind::eager).submit(net).wait();
+        net.push_back(conv_op);
     }
+    auto t1 = Clock::now();
+    // Execute
+    stream(stream::kind::eager).submit(net).wait();
     auto t2 = Clock::now();
     float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
-    std::cout << "Duration: " << duration << " ms" << "\n";
-    std::cout << "MFlops/s: " << complexity/1000./1000./duration*1000. << "\n";
+    std::cout << "Duration: " << duration << " ms"  << std::endl;
+    std::cout << "MFlops/s: " << complexity/1000./1000./duration*1000.*nbatch  << std::endl << std::endl;
 
     return 1;
 }
 
-bool test_simple() {
-    std::cout << "\nRunning 3D convolution test: simple\n";
-    const int ih=5, iw=5, id=4;
-    const int oh=3, ow=3, od=2;
+bool test_fwd_conv(const int bs, const int ic, const int oc, const int insize) {
+    const int ih=insize, iw=insize, id=insize;
     const int kh=3, kw=3, kd=3;
-    int out_len = oh*ow*od;
-    int weights_len = kh*kw*kd;
+    const int oh=ih-kh+1, ow=iw-kw+1, od=id-kd+1;
+    int weights_len = oc*ic*kh*kw*kd;
     std::vector<float> in_weights(weights_len, 0);
-    std::vector<float> correct_output(out_len, 0);
-    in_weights = {
-        0, 0, 0,
-        0, 0, 0,
-        0, 0, 0,
-        0, 0, 0,
-        0, 0, 0,
-        0, 0, 0,
-        0, 0, 0,
-        0, 0, 0,
-        0, 0, 1
-    };
-    return assert_convolution(ih, iw, id, kh, kw, kd, oh, ow, od,
-                        in_weights);
-}
-
-bool test_asymmetric() {
-    std::cout << "\nRunning 3D convolution test: asymmetric\n";
-    const int ih=64, iw=64, id=64;
-    const int oh=62, ow=62, od=62;
-    const int kh=3, kw=3, kd=3;
-    int out_len = oh*ow*od;
-    int weights_len = kh*kw*kd;
-    std::vector<float> in_weights(weights_len, 0);
-    std::vector<float> correct_output(out_len, 0);
-    in_weights = {
-        0, 0, 0,
-        0, 4, 0,
-        0, 0, 0,
-        0, 0, 3,
-        0, 0, 1,
-        0, 0, 0,
-        3, 0, 0,
-        1, 2, 0,
-        1, 0, 0
-    };
-    return assert_convolution(ih, iw, id, kh, kw, kd, oh, ow, od,
-                        in_weights);
-
+    for (int o = 0; o < oc; o++) {
+        for (int i = 0; i < ic; i++) {
+            for (int d = 0; d < kd; d++) {
+                for (int h = 0; h < kh; h++) {
+                    for (int w = 0; w < kw; w++) {
+                        const int ix = (((o*ic + i)*kd + d)*kh + h)*kw + w;
+                        if ((h==1 || w==2) && (i % 4==0)  && (o % 4==0))
+                            in_weights[ix] = (w+1) + d - (i/4+1) + (o/4+1);
+                    }
+                }
+            }
+        }
+    }
+    return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
+                              in_weights);
 }
 
 int main(int argc, char **argv) {
     try {
-        test_asymmetric();
+        int in_channels = 16;
+        int out_channels = 32;
+        std::vector<int> in_sizes = {32, 64};
+        std::vector<int> batch_sizes = {1, 4, 8};
+        for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
+            for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
+                test_fwd_conv(*mb, in_channels, out_channels, *s);
+            }
+        }
     }
     catch(error& e) {
         std::cerr << "status: " << e.status << std::endl;
