@@ -17,6 +17,7 @@
 #include <iostream>
 #include <numeric>
 #include <string>
+#include <cmath>
 #include "mkldnn.hpp"
 #include <iomanip>
 
@@ -40,7 +41,7 @@ void print_array_3d(std::string name, float* array, int n, int m, int l) {
 bool check_result(std::string array_name, float* array, float* correct, const int len) {
     float error = 0;
     for (int i = 0; i < len; i++) {
-        error += abs(array[i] - correct[i]);
+        error += std::abs(array[i] - correct[i]);
     }
     bool success =  error < TOLERANCE;
     std::cout << "Test " << array_name << ": ";
