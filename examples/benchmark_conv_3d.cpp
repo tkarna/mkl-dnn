@@ -145,7 +145,7 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
     float complexity = ((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
     std::cout << "flops: " << complexity << "\n";
 
-    const int ntime = 100;
+    const int ntime = 15;
     if (src_needs_reorder) {
         printf("Running src reorder\n");
         auto op = reorder(conv_user_src_memory, conv_src_memory);
