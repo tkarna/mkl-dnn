@@ -74,7 +74,7 @@ struct reference {};
         const memory_desc_wrapper &input_d = pd->input_pd(); \
         const memory_desc_wrapper &output_d = pd->output_pd(); \
         const float alpha = pd->alpha(); MAYBE_UNUSED(alpha); \
-        const float beta = pd->beta();
+        const float beta = pd->beta(); MAYBE_UNUSED(beta);
 
 /* specific reorders: common template */
 template <SIMPLE_REORDER_TEMPL_DECL, typename spec = void>
@@ -172,8 +172,6 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         const auto &dims = input_d.dims();
         const auto is = input_d.blocking_desc().strides[0];
         const auto os = output_d.blocking_desc().strides[0];
-
-        round_mode_t rmode = pd->attr()->round_mode_;
 
         auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o) {
             if (order_keep) {

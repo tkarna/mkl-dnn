@@ -164,6 +164,12 @@ namespace conv_kind {
     const conv_kind_t conv3D = mkldnn_conv3D;
 }
 
+using pool_kind_t = mkldnn_pool_kind_t;
+namespace pool_kind {
+    const pool_kind_t pool2D = mkldnn_pool2D;
+    const pool_kind_t pool3D = mkldnn_pool3D;
+}
+
 using engine_kind_t = mkldnn_engine_kind_t;
 namespace engine_kind {
     const engine_kind_t any_engine = mkldnn_any_engine;

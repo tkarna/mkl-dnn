@@ -73,16 +73,38 @@ status_t pooling_desc_init(pooling_desc_t *pool_desc,
         pd.accum_data_type = dst_desc->data_type;
     }
 
-    bool consistency = true
-        && src_desc->ndims == 4
-        && dst_desc->ndims == 4
+    bool consistency = true;
+    consistency = consistency
+        && src_desc->ndims == dst_desc->ndims
         && src_desc->dims[0] == dst_desc->dims[0]
         && src_desc->dims[1] == dst_desc->dims[1];
-    for (int i = 2; i <= 3; ++i)
-        consistency = consistency && (
-                (src_desc->dims[i] - kernel[i - 2] + padding_l[i - 2]
-                 + padding_r[i - 2]) / strides[i - 2] + 1
-                == dst_desc->dims[i]);
+
+    if(consistency)
+    {
+        if(src_desc->ndims == 5)
+        {
+            pd.pool_kind = pool_kind_t::mkldnn_pool3D;
+            for (int i = 2; i <= 4; ++i)
+                consistency = consistency && (
+                    (src_desc->dims[i] - kernel[i - 2] + padding_l[i - 2]
+                     + padding_r[i - 2]) / strides[i - 2] + 1
+                    == dst_desc->dims[i]);
+        }
+        else if(src_desc->ndims == 4)
+        {
+            pd.pool_kind = pool_kind_t::mkldnn_pool2D;
+            for (int i = 2; i <= 3; ++i)
+                consistency = consistency && (
+                    (src_desc->dims[i] - kernel[i - 2] + padding_l[i - 2]
+                     + padding_r[i - 2]) / strides[i - 2] + 1
+                    == dst_desc->dims[i]);
+        }
+        else
+        {
+            consistency = false;
+        }
+    }
+
     if (!consistency) return invalid_arguments;
 
     *pool_desc = pd;
@@ -98,7 +120,7 @@ status_t mkldnn_pooling_forward_desc_init(pooling_desc_t *pool_desc,
     if (!one_of(prop_kind, forward_training, forward_inference))
         return invalid_arguments;
     return pooling_desc_init(pool_desc, prop_kind, alg_kind, src_desc,
-            dst_desc, strides, kernel, padding_l, padding_r, padding_kind);
+             dst_desc, strides, kernel, padding_l, padding_r, padding_kind);
 }
 
 status_t mkldnn_pooling_backward_desc_init(pooling_desc_t *pool_desc,

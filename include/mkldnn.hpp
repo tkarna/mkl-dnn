@@ -120,6 +120,7 @@ public:
         relu = mkldnn_relu,
         softmax = mkldnn_softmax,
         pooling = mkldnn_pooling,
+        pooling3D = mkldnn_pooling3D,
         lrn = mkldnn_lrn,
         batch_normalization = mkldnn_batch_normalization,
         inner_product = mkldnn_inner_product,
@@ -237,8 +238,17 @@ enum conv_kind {
     conv3D = mkldnn_conv3D
 };
 
+enum pool_kind {
+    pool2D = mkldnn_pool2D,
+    pool3D = mkldnn_pool3D
+};
+
 inline mkldnn_conv_kind_t convert_to_c(conv_kind kind) {
     return static_cast<mkldnn_conv_kind_t>(kind);
+}
+
+inline mkldnn_pool_kind_t convert_to_c(pool_kind kind) {
+    return static_cast<mkldnn_pool_kind_t>(kind);
 }
 
 enum prop_kind {

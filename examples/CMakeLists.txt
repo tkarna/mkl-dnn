@@ -116,6 +116,16 @@ if(WIN32)
     set_property(TEST benchmark-conv-3d-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
 endif()
 
+add_executable(test-pooling-cpp test_pooling.cpp)
+set_property(TARGET test-pooling-cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(test-pooling-cpp ${LIB_NAME})
+add_test(test-pooling-cpp test-pooling-cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      test-pooling-cpp.vcxproj.user @ONLY)
+    set_property(TEST test-pooling-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
+
 add_executable(simple-training-net-c simple_training_net.c)
 set_property(TARGET simple-training-net-c PROPERTY C_STANDARD 99)
 if(WIN32)
