@@ -17,11 +17,13 @@
 #include <iostream>
 #include <numeric>
 #include <string>
+#include <tuple>
 #include "mkldnn.hpp"
 #include <iomanip>
 
 #include <cstdio>
 #include <ctime>
+#include <sstream>
 
 #include <chrono>
 typedef std::chrono::high_resolution_clock Clock;
@@ -142,7 +144,7 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
            weights_height, weights_width, weights_depth,
            in_channels, out_channels, nbatch
           );
-    float complexity = 2*((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
+    float complexity = 2.0*((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
     std::cout << "flops: " << complexity << "\n";
 
     const int ntime = 15;
@@ -188,14 +190,16 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
     auto t2 = Clock::now();
     float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
     std::cout << "Duration: " << duration << " ms"  << std::endl;
-    std::cout << "MFlops/s: " << complexity/1000./1000./duration*1000.*nbatch  << std::endl << std::endl;
+    std::cout << nbatch << " " << in_channels << " " << out_channels << " " << in_height << " " << weights_height <<  "   GFlops/s: " << complexity/1000./1000./1000./duration*1000.*nbatch  << std::endl << std::endl;
 
     return 1;
 }
 
-bool test_fwd_conv(const int bs, const int ic, const int oc, const int insize) {
+bool test_fwd_conv(const int bs, const int ic, const int oc, const int insize, const int fSize) {
+    printf ("%d %d %d %d %d\n", bs, ic, oc, insize, fSize);
     const int ih=insize, iw=insize, id=insize;
-    const int kh=3, kw=3, kd=3;
+    //const int kh=3, kw=3, kd=3;
+    const int kh = fSize, kw = fSize, kd = fSize;
     const int oh=ih-kh+1, ow=iw-kw+1, od=id-kd+1;
     int weights_len = oc*ic*kh*kw*kd;
     std::vector<float> in_weights(weights_len, 0);
@@ -214,18 +218,47 @@ bool test_fwd_conv(const int bs, const int ic, const int oc, const int insize) {
     }
     return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
                               in_weights);
+
 }
 
 int main(int argc, char **argv) {
+    bool bRunCosmoflow = false;
+
+    if ( argc > 1 ) {
+       std::stringstream ss(argv[1]);
+       if(!(ss >> std::boolalpha >> bRunCosmoflow  )) {
+         std::cerr << "\nProvide true/false\n";
+         return 1;
+       }
+    }
+
     try {
-        int in_channels = 16;
-        int out_channels = 32;
-        std::vector<int> in_sizes = {32, 64};
-        std::vector<int> batch_sizes = {1, 4, 8};
-        for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
-            for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
-                test_fwd_conv(*mb, in_channels, out_channels, *s);
-            }
+        if ( bRunCosmoflow ) {
+          std::cout << "\nRunning Cosmoflow benchmark cases: \n";
+          std::vector<std::tuple<int, int, int, int, int>> vecDims; // batch, input channels, output channels, Input size, kernel size.
+//          vecDims.push_back(std::make_tuple( 1, 16, 32, 64, 3 ));
+          vecDims.push_back(std::make_tuple( 1, 1, 16, 128, 3 ));
+          vecDims.push_back(std::make_tuple( 1, 16, 32, 63, 4 )); 
+          vecDims.push_back(std::make_tuple( 1, 32, 64, 30, 4 )); 
+          vecDims.push_back(std::make_tuple( 1, 64, 64, 14, 3 )); 
+          vecDims.push_back(std::make_tuple( 1, 64, 128, 12, 2 )); 
+          vecDims.push_back(std::make_tuple( 1, 128, 128, 11, 2 )); 
+
+          for ( size_t i = 0; i < vecDims.size(); i++ ) {
+             auto t1 = vecDims[i];
+             test_fwd_conv(  std::get<0>(t1), std::get<1>(t1), std::get<2>(t1), std::get<3>(t1), std::get<4>(t1) );
+          }
+        } else {
+
+          int in_channels = 16;
+          int out_channels = 32;
+          std::vector<int> in_sizes = {32, 64, 128, 256};
+          std::vector<int> batch_sizes = {1, 4};
+          for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
+              for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
+                  test_fwd_conv(*mb, in_channels, out_channels, *s, 3);
+              }
+          }
         }
     }
     catch(error& e) {
