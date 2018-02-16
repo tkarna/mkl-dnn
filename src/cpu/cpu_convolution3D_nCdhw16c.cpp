@@ -333,7 +333,13 @@ void cpu_convolution3D_nCdhw16c_bwd_weights_t<src_type, diff_wei_type, diff_dst_
     const int IW = conf_.IW();
     const int ID = conf_.ID();
 
+    const int OBLOCK = 28;
+    const int OWREM = conf_.OW() % OBLOCK;
+    const int OWB = conf_.OW() / OBLOCK + (OWREM > 0);
+
     const int NBLOCK = 16;
+    const int OC = conf_.OC() / G;
+    const int IC = conf_.IC() / G;
     const int OCB = conf_.OC() / G / NBLOCK;
     const int ICB = conf_.IC() / G / NBLOCK;
 
@@ -345,36 +351,65 @@ void cpu_convolution3D_nCdhw16c_bwd_weights_t<src_type, diff_wei_type, diff_dst_
     const int KSW = conf_.KSW();
     const int KSD = conf_.KSD();
 
-    const int KDH = conf_.KDH();
-    const int KDW = conf_.KDW();
-    const int KDD = conf_.KDD();
+    // NOTE assume no dilation
+    // const int KDH = conf_.KDH();
+    // const int KDW = conf_.KDW();
+    // const int KDD = conf_.KDD();
 
-    const int padT = conf_.padT();
-    const int padL = conf_.padL();
-    const int padD1 = conf_.padD1();
+    // const int padT = conf_.padT();
+    // const int padL = conf_.padL();
+    // const int padD1 = conf_.padD1();
 
+    auto src_ix = MultiviewOffset(MB, ICB, ID, IH, IW);
+    auto dst_ix = MultiviewOffset(MB, OCB, OD, OH, OW);
+    auto w_ix = MultiviewOffset(OCB, ICB, KD, KH, KW);
+
+    const int max_nthr = omp_get_max_threads();
     if (diff_bias) {
-#       pragma omp parallel for collapse(2) schedule(static)
-        for (int g = 0; g < G; ++g) {
-            for (int ocb = 0; ocb < OCB; ++ocb) {
-                acc_data_t db[NBLOCK] = {0};
+        acc_data_t* db = new acc_data_t[max_nthr*G*OCB*NBLOCK];
+
+#       pragma omp parallel
+        {
+            int ithr = omp_get_thread_num();
+            // zero temporary
+            for (int g = 0; g < G; ++g) {
+                for (int ocb = 0; ocb < OCB; ++ocb) {
+                    for (int _oc=0; _oc < NBLOCK; ++_oc) {
+                        db[ithr*G*OCB*NBLOCK + g*OCB*NBLOCK + ocb*NBLOCK + _oc] = 0;
+                    }
+                }
+            }
+            // reduce over output dimesions
+#           pragma omp for collapse(6)
+            for (int g = 0; g < G; ++g) {
                 for (int mb = 0; mb < MB; ++mb) {
-                    for (int od = 0; od < OD; ++od) {
-                        for (int oh = 0; oh < OH; ++oh) {
-                            for (int ow = 0; ow < OW; ++ow) {
-                                auto dst_ix = diff_dst_d.off(mb, g*OCB*NBLOCK + ocb*NBLOCK, od, oh, ow);
-#                               pragma omp simd
-                                for (int _oc=0; _oc < NBLOCK; ++_oc) {
-                                    db[_oc] += (acc_data_t)diff_dst[dst_ix + _oc];
+                    for (int ocb = 0; ocb < OCB; ++ocb) {
+                        for (int od = 0; od < OD; ++od) {
+                            for (int oh = 0; oh < OH; ++oh) {
+                                for (int ow = 0; ow < OW; ++ow) {
+#                                   pragma omp simd
+                                    for (int _oc=0; _oc < NBLOCK; ++_oc) {
+                                        db[ithr*G*OCB*NBLOCK + g*OCB*NBLOCK + ocb*NBLOCK + _oc] += (acc_data_t)diff_dst[dst_ix.off(mb, g*OCB + ocb, od, oh, ow)*NBLOCK + _oc];
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                auto bias_ix = diff_bias_d.off(g*OCB*NBLOCK + ocb*NBLOCK);
-#               pragma omp simd
-                for (int _oc=0; _oc < NBLOCK; ++_oc) {
-                    diff_bias[bias_ix + _oc] = saturate<diff_wei_data_t>(db[_oc]);
+            }
+#           pragma omp barrier
+            // reduce over number of threads
+#           pragma omp for collapse(2)
+            for (int g = 0; g < G; ++g) {
+                for (int ocb = 0; ocb < OCB; ++ocb) {
+#                   pragma omp simd
+                    for (int _oc=0; _oc < NBLOCK; ++_oc) {
+                        acc_data_t dbr = 0;
+                        for (int ithr = 0; ithr < max_nthr; ++ithr) {
+                            dbr += db[ithr*G*OCB*NBLOCK + g*OCB*NBLOCK + ocb*NBLOCK + _oc];
+                        }
+                        diff_bias[g*OCB*NBLOCK + ocb*NBLOCK + _oc] = dbr;
+                    }
                 }
             }
         }
@@ -387,41 +422,54 @@ void cpu_convolution3D_nCdhw16c_bwd_weights_t<src_type, diff_wei_type, diff_dst_
                 for (int kd = 0; kd < KD; ++kd) {
                     for (int kh = 0; kh < KH; ++kh) {
                         for (int kw = 0; kw < KW; ++kw) {
-                            acc_data_t dw[NBLOCK*NBLOCK] = {0};
+                            acc_data_t dw[NBLOCK][NBLOCK] = {{0}};
                             for (int mb = 0; mb < MB; ++mb) {
                                 for (int od = 0; od < OD; ++od) {
                                     for (int oh = 0; oh < OH; ++oh) {
-                                        for (int ow = 0; ow < OW; ++ow) {
-                                            // NOTE this if statement is naasty!
-                                            if (ow*KSW + kw * (1 + KDW) < padL
-                                                    || oh*KSH + kh * (1 + KDH) < padT
-                                                    || od*KSD + kd * (1 + KDD) < padD1
-                                                    || ow*KSW + kw * (1 + KDW) >= IW + padL
-                                                    || oh*KSH + kh * (1 + KDH) >= IH + padT
-                                                    || od*KSD + kd * (1 + KDD) >= ID + padD1)
-                                                continue;
+                                        // case 1: full OBLOCKs
+                                        for (int owb = 0; owb < OWB - 1 + (OWREM==0); ++owb) {
+                                            const int id = od*KSD + kd;
+                                            const int ih = oh*KSH + kh;
 
-                                            int id = od*KSD - padD1 + kd * (1 + KDD);
-                                            int ih = oh*KSH - padT + kh * (1 + KDH);
-                                            int iw = ow*KSW - padL + kw * (1 + KDW);
+#                                           pragma unroll (OBLOCK)
+                                            for (int _ow = 0; _ow < OBLOCK; ++_ow) {
+#                                               pragma unroll (NBLOCK)
+                                                for (int _oc=0; _oc < NBLOCK; ++_oc) {
+#                                                   pragma omp simd
+                                                    for (int _ic=0; _ic < NBLOCK; ++_ic) {
+                                                        dw[_oc][_ic] += (acc_data_t)diff_dst[dst_ix.off(mb, g*OC + ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] *
+                                                            src[src_ix.off(mb, g*IC + icb, id, ih, (owb*OBLOCK + _ow)*KSW + kw)*NBLOCK + _ic];
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // case 2: remainder
+                                        if (OWREM > 0) {
+                                            for (int owb = OWB - 1; owb < OWB; ++owb) {
+                                                const int id = od*KSD + kd;
+                                                const int ih = oh*KSH + kh;
 
-                                            auto dst_ix = diff_dst_d.off(mb, g*OCB*NBLOCK + ocb*NBLOCK, od, oh, ow);
-                                            auto src_ix = src_d.off(mb, g*ICB*NBLOCK + icb*NBLOCK, id, ih, iw);
-                                            for (int _oc=0; _oc < NBLOCK; ++_oc) {
-#                                               pragma omp simd
-                                                for (int _ic=0; _ic < NBLOCK; ++_ic) {
-                                                    dw[_oc*NBLOCK + _ic] += (acc_data_t)diff_dst[dst_ix + _oc] * src[src_ix + _ic];
+#                                               pragma unroll
+                                                for (int _ow = 0; _ow < OWREM; ++_ow) {
+#                                                   pragma unroll (NBLOCK)
+                                                    for (int _oc=0; _oc < NBLOCK; ++_oc) {
+#                                                       pragma omp simd
+                                                        for (int _ic=0; _ic < NBLOCK; ++_ic) {
+                                                            dw[_oc][_ic] += (acc_data_t)diff_dst[dst_ix.off(mb, g*OC + ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] *
+                                                                src[src_ix.off(mb, g*IC + icb, id, ih, (owb*OBLOCK + _ow)*KSW + kw)*NBLOCK + _ic];
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
                             }
-                            auto idx = diff_weights_d.off(ocb*NBLOCK, icb*NBLOCK, kd, kh, kw);
-                            for (int _oc=0; _oc < NBLOCK; ++_oc) {
-#                               pragma omp simd
-                                for (int _ic=0; _ic < NBLOCK; ++_ic) {
-                                    diff_weights[idx + _oc*NBLOCK + _ic] = saturate<diff_wei_data_t>(dw[_oc*NBLOCK + _ic]);
+#                           pragma omp simd
+                            for (int _ic=0; _ic < NBLOCK; ++_ic) {
+#                               pragma unroll (NBLOCK)
+                                for (int _oc=0; _oc < NBLOCK; ++_oc) {
+                                    diff_weights[w_ix.off(ocb, icb, kd, kh, kw)*NBLOCK*NBLOCK + _oc*NBLOCK + _ic] = saturate<diff_wei_data_t>(dw[_oc][_ic]);
                                 }
                             }
                         }
