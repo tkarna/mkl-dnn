@@ -304,6 +304,9 @@ struct cpu_convolution3D_nCdhw16c_bwd_weights_t: public cpu_primitive_t {
                         this->desc()->diff_bias_desc.data_type
                         == diff_wei_type)
                 && this->attr()->has_default_values();
+//                 if (ok) {
+                    printf("---> Check 16ch bkw weights init: %d\n", ok);
+//                 }
             return ok ? status::success : status::unimplemented;
         }
         inline int MB() const { return this->desc()->src_desc.dims[0]; }

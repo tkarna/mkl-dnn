@@ -200,7 +200,7 @@ void compute_bkw_weights_conv(const memory &src_mem,
     auto diff_dst_md = diff_dst_pd.desc();
     auto diff_weights_md = diff_weights_pd.desc();
 
-    // define memory descriptors for fwd op
+    // define memory descriptors
     auto out_channels = diff_dst_md.data.dims[1];
     memory::dims bias_dims = {out_channels};
     auto src_dims = {src_md.data.dims[0], src_md.data.dims[1],

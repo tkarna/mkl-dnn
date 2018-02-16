@@ -116,6 +116,16 @@ if(WIN32)
     set_property(TEST benchmark-conv-3d-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
 endif()
 
+add_executable(benchmark-conv-bkw-3d-cpp benchmark_conv_bkw_3d.cpp)
+set_property(TARGET benchmark-conv-bkw-3d-cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(benchmark-conv-bkw-3d-cpp ${LIB_NAME})
+add_test(benchmark-conv-bkw-3d-cpp benchmark-conv-bkw-3d-cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      benchmark-conv-bkw-3d-cpp.vcxproj.user @ONLY)
+    set_property(TEST benchmark-conv-bkw-3d-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
+
 add_executable(test-pooling-cpp test_pooling.cpp)
 set_property(TARGET test-pooling-cpp PROPERTY CXX_STANDARD 11)
 target_link_libraries(test-pooling-cpp ${LIB_NAME})
