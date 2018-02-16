@@ -86,22 +86,38 @@ void compute_fwd_pool(algorithm pooling_alg,
            dst_dims[1], batch_size
           );
 
-    const int ntime = 25;
+    const double ntime_target = 1.0e3; // Time in ms
+    int nruns = 2;
+    const int max_nruns = 1e9;
+    const double overshoot = 1.2;
+    double elapsed = 0.0;
+
+    while(elapsed < ntime_target) {
+
+        for (int it = 0; it < nruns; it++) {
+            net.push_back(pool_op);
+        }
+
+        // Execute
+        auto t1 = Clock::now();
+        stream(stream::kind::eager).submit(net).wait();
+        auto t2 = Clock::now();
+
+        elapsed = (double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+        if(elapsed < ntime_target)
+        {
+            std::cout << " [took " << elapsed << " discarding....]" << std::endl;
+            nruns = std::max((double)nruns+1.0, nruns*overshoot*ntime_target/elapsed);
+        }
+    }
+
     float complexity = ((float)dst_dims[2])*dst_dims[3]*dst_dims[4]*kernel[0]*kernel[1]*kernel[2]*dst_dims[1];
     std::cout << "Total flops: " << complexity << "\n";
 
-    for (int it = 0; it < ntime; it++) {
-        net.push_back(pool_op);
-    }
-    // Execute
-    auto t1 = Clock::now();
-    stream(stream::kind::eager).submit(net).wait();
-    auto t2 = Clock::now();
-
-    float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
-    std::cout << "Duration: " << duration << " ms" << "\n";
-    std::cout << "MFlops/s: " << complexity/1000./1000./duration*1000.*batch_size << "\n";
-
+    std::cout << "Total elapsed: " << elapsed << " ms" << "\n";
+    std::cout << "#iter: " << nruns << "\n";
+    std::cout << "Avg duration: " << elapsed/nruns << " ms" << "\n";
+    std::cout << "MFlops/s: " << complexity/1000./1000./(elapsed/nruns)*1000.*batch_size << "\n\n";
 }
 
 void time_pooling_3d(algorithm pooling_alg,
