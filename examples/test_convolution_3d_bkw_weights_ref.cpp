@@ -23,14 +23,12 @@
 
 using namespace mkldnn;
 
-float TOLERANCE = 1e-16;
-
 void print_array_3d(std::string name, float* array, int n, int m, int l) {
     std::cout << name << ":" << std::endl;
     for (int i=0; i<n; i++){
         for (int j=0; j<m; j++) {
             for (int k=0; k<l; k++) {
-                std::cout << std::setw(5) << array[m*l*i + l*j + k];
+                std::cout << std::setw(8) << std::setprecision(5) << array[m*l*i + l*j + k];
             }
             std::cout << std::endl;
         }
@@ -38,18 +36,24 @@ void print_array_3d(std::string name, float* array, int n, int m, int l) {
     }
 }
 
-bool check_result(std::string array_name, float* array, float* correct, const int len) {
-    float error = 0;
+bool check_result(std::string array_name, float* array, float* correct,
+                  const int len, float tolerance, bool verbose=true) {
+    /* Computes the average abs relative error in the output array */
+    float rel_error = 0;
     for (int i = 0; i < len; i++) {
-        error += std::abs(array[i] - correct[i]);
+        float re = (array[i] - correct[i])/correct[i];
+        if (verbose && std::abs(re) > tolerance) {
+            printf(" i=%d res=%.4f cor=%.4f rel_err=%.4g\n", i, array[i], correct[i], re);
+        }
+        rel_error = std::max(rel_error, std::abs(re));
     }
-    bool success =  error < TOLERANCE;
+    bool success =  rel_error < tolerance;
     std::cout << "Test " << array_name << ": ";
     if (success) {
         std::cout << "SUCCESS" << std::endl;
     } else {
         std::cout << "FAILED" << std::endl;
-        std::cout << "  Error: " << error << std::endl;
+        std::cout << "  Relative error: " << rel_error << std::endl;
     }
     return success;
 }
@@ -237,23 +241,14 @@ void compute_bkw_weights_conv(const memory &src_mem,
     auto src_fmt = src_md.data.format;
     auto conv_src_fmt = bkww_pd.src_primitive_desc().desc().data.format;
     bool src_needs_reorder = conv_src_fmt != src_fmt;
-    printf("data src format: %d\n", src_fmt);
-    printf("conv src format: %d\n", conv_src_fmt);
-    printf("src format match: %d\n", conv_src_fmt == src_fmt);
 
     auto weights_fmt = diff_weights_md.data.format;
     auto conv_weights_fmt = bkww_pd.diff_weights_primitive_desc().desc().data.format;
     bool weights_needs_reorder = conv_weights_fmt != weights_fmt;
-    printf("data weights format: %d\n", weights_fmt);
-    printf("conv weights format: %d\n", conv_weights_fmt);
-    printf("weights format match: %d\n", conv_weights_fmt == weights_fmt);
 
     auto dst_fmt = diff_dst_md.data.format;
     auto conv_dst_fmt = bkww_pd.diff_dst_primitive_desc().desc().data.format;
     bool dst_needs_reorder = conv_dst_fmt != dst_fmt;
-    printf("data dst format: %d\n", dst_fmt);
-    printf("conv dst format: %d\n", conv_dst_fmt);
-    printf("dst format match: %d\n", conv_dst_fmt == dst_fmt);
 
     // NOTE if implemented correctly bias should also need reorder
 
@@ -281,11 +276,9 @@ void compute_bkw_weights_conv(const memory &src_mem,
     std::vector<primitive> net;
 
     if (src_needs_reorder) {
-        printf("Creating src reorder\n");
         net.push_back(reorder(src_mem, reorder_src_mem));
     }
     if (dst_needs_reorder) {
-        printf("Creating diff dst reorder\n");
         net.push_back(reorder(diff_dst_mem, reorder_diff_dst_mem));
     }
 
@@ -293,7 +286,6 @@ void compute_bkw_weights_conv(const memory &src_mem,
     net.push_back(bkww_op);
 
     if (weights_needs_reorder) {
-        printf("Creating diff weight reorder\n");
         net.push_back(reorder(reorder_diff_weights_mem, diff_weights_mem));
     }
     // execute
@@ -309,6 +301,7 @@ bool assert_bkw_weights_convolution(const int nbatch, const int in_channels,
                                     const int weights_depth, const int out_height,
                                     const int out_width, const int out_depth,
                                     std::vector<float>& in_diff_dst,
+                                    float tolerance,
                                     bool test_bias = true,
                                     bool print_arrays = true
                                    ){
@@ -348,17 +341,9 @@ bool assert_bkw_weights_convolution(const int nbatch, const int in_channels,
 
 
     // assign input and weights data
-    for (int mb = 0; mb < nbatch; mb++) {
-    for (int c = 0; c < in_channels; c++) {
-    for (int i = 0; i < in_depth; i++) {
-        for (int j = 0; j < in_height; j++) {
-            for (int k = 0; k < in_width; k++) {
-                const size_t ix = (((mb*in_channels + c)*in_depth + i)*in_height + j)*in_width + k;
-                vect_src[ix] = (i+1)*(j+1)*(k+1);
-            }
-        }
-    }
-    }}
+    for (size_t i = 0; i < vect_src.size(); i++)
+        vect_src[i] = rand() % 25 + 1.0;
+
     vect_diff_dst = in_diff_dst;
 
     bool success = true;
@@ -380,7 +365,7 @@ bool assert_bkw_weights_convolution(const int nbatch, const int in_channels,
                              strides, dilation, padding);
 
     // check that src did not change
-    success = success && check_result("Source", vect_src.data(), vect_tmp_src.data(), vect_src.size());
+    success = success && check_result("Source", vect_src.data(), vect_tmp_src.data(), vect_src.size(), tolerance);
 
     if (print_arrays) {
         print_array_3d("Input", vect_src.data(), src_dims[2], src_dims[3], src_dims[4]);
@@ -394,16 +379,15 @@ bool assert_bkw_weights_convolution(const int nbatch, const int in_channels,
             print_array_3d("Diff bias", vect_diff_bias.data(), 1, 1, bias_dims[0]);
             print_array_3d("Correct diff bias", vect_ref_diff_bias.data(), 1, 1, bias_dims[0]);
         }
-        success = success && check_result("diff bias", vect_diff_bias.data(), vect_ref_diff_bias.data(), vect_diff_bias.size());
+        success = success && check_result("diff bias", vect_diff_bias.data(), vect_ref_diff_bias.data(), vect_diff_bias.size(), tolerance);
     }
-    success = success && check_result("diff weight", vect_diff_weights.data(), vect_ref_diff_weights.data(), vect_diff_weights.size());
+    success = success && check_result("diff weight", vect_diff_weights.data(), vect_ref_diff_weights.data(), vect_diff_weights.size(), tolerance);
 
     return success;
 }
 
-bool test_simple(const int ic=1, const int oc=1) {
+bool test_simple(const int bs=1, const int ic=1, const int oc=1) {
     printf("\nRunning 3D bkw weights convolution test: simple IC=%d OC=%d\n", ic, oc);
-    const int bs=1;
     const int ih=5, iw=5, id=4;
     const int oh=3, ow=3, od=2;
     const int kh=3, kw=3, kd=3;
@@ -418,54 +402,107 @@ bool test_simple(const int ic=1, const int oc=1) {
     bool test_bias = true;
     bool print_arrays = true;
     return assert_bkw_weights_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
-                              in_diff_dst, test_bias, print_arrays);
+                              in_diff_dst, 1e-25, test_bias, print_arrays);
 }
 
-bool test_full(const int ic=1, const int oc=1) {
-    printf("\nRunning 3D bkw weights convolution test: full IC=%d OC=%d\n", ic, oc);
-    const int bs=1;
-    const int ih=5, iw=5, id=4;
-    const int oh=3, ow=3, od=2;
+bool test_full(const int bs=1, const int ic=1, const int oc=1, const int ih=5, const int iw=5, const int id=4, bool fill_float=true) {
+    auto float_str = fill_float ? "float" : "int";
+    printf("\nRunning 3D bkw weights convolution test: full %s bs=%d %dx%dx%d IC=%d OC=%d\n", float_str, bs, ih, iw, id, ic, oc);
     const int kh=3, kw=3, kd=3;
+    const int oh=ih-kh+1, ow=iw-kw+1, od=id-kd+1;
     int out_len = bs*oc*oh*ow*od;
     std::vector<float> in_diff_dst(out_len, 0);
-    for (int mb = 0; mb < bs; mb++) {
-    for (int c = 0; c < oc; c++) {
-    for (int i = 0; i < od; i++) {
-        for (int j = 0; j < oh; j++) {
-            for (int k = 0; k < ow; k++) {
-                const size_t ix = (((mb*oc + c)*od + i)*oh + j)*ow + k;
-                in_diff_dst[ix] = (i+1)*(j+1)*(k+1) + c;
-            }
-        }
+    if (fill_float) {
+        for (size_t i = 0; i < in_diff_dst.size(); i++)
+            in_diff_dst[i] = (float)(rand() % 100)/11.2 + 1.0;
+    } else {
+        for (size_t i = 0; i < in_diff_dst.size(); i++)
+            in_diff_dst[i] = rand() % 8 + 1.0;
     }
-    }}
     bool test_bias = true;
     bool print_arrays = false;
+    float tolerance = fill_float ? 5e-5 : 1e-25;
     return assert_bkw_weights_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
-                              in_diff_dst, test_bias, print_arrays);
+                              in_diff_dst, tolerance, test_bias, print_arrays);
 }
 
 int main(int argc, char **argv) {
+    srand(2);
     bool success = true;
     try {
         success = success
-            && test_simple(1, 1)
-            && test_simple(1, 32)
-            && test_simple(2, 32)
-            && test_simple(32, 1)
-            && test_simple(16, 32)
-            && test_simple(32, 16)
-            && test_simple(32, 32)
-            && test_full(1, 1)
-            && test_full(2, 16)
-            && test_full(2, 32)
-            && test_full(1, 16)
-            && test_full(1, 32)
-            && test_full(16, 16)
-            && test_full(16, 32)
-            && test_full(32, 16)
-            && test_full(32, 32);
+            && test_simple(1, 1, 1)
+            && test_simple(1, 1, 32)
+            && test_simple(1, 2, 32)
+            && test_simple(1, 32, 1)
+            && test_simple(1, 16, 32)
+            && test_simple(1, 32, 16)
+            && test_simple(1, 32, 32)
+            && test_simple(4, 1, 1)
+            && test_simple(4, 1, 32)
+            && test_simple(4, 2, 32)
+            && test_simple(4, 32, 1)
+            && test_simple(4, 16, 32)
+            && test_simple(4, 32, 16)
+            && test_simple(4, 32, 32)
+            && test_full(1, 1,  1,  5, 5, 4, false)
+            && test_full(1, 2,  16, 5, 5, 4, false)
+            && test_full(1, 2,  32, 5, 5, 4, false)
+            && test_full(1, 1,  16, 5, 5, 4, false)
+            && test_full(1, 1,  32, 5, 5, 4, false)
+            && test_full(1, 16, 16, 5, 5, 4, false)
+            && test_full(1, 16, 32, 5, 5, 4, false)
+            && test_full(1, 32, 16, 5, 5, 4, false)
+            && test_full(1, 32, 32, 5, 5, 4, false)
+            && test_full(1, 1,  1,  5, 5, 4, true)
+            && test_full(1, 2,  16, 5, 5, 4, true)
+            && test_full(1, 2,  32, 5, 5, 4, true)
+            && test_full(1, 1,  16, 5, 5, 4, true)
+            && test_full(1, 1,  32, 5, 5, 4, true)
+            && test_full(1, 16, 16, 5, 5, 4, true)
+            && test_full(1, 16, 32, 5, 5, 4, true)
+            && test_full(1, 32, 16, 5, 5, 4, true)
+            && test_full(1, 32, 32, 5, 5, 4, true)
+            && test_full(1, 16, 16, 19, 19, 17, false)
+            && test_full(1, 16, 32, 19, 19, 17, false)
+            && test_full(1, 32, 16, 19, 19, 17, false)
+            && test_full(1, 32, 32, 19, 19, 17, false)
+            && test_full(1, 16, 16, 19, 19, 17, true)
+            && test_full(1, 16, 32, 19, 19, 17, true)
+            && test_full(1, 32, 16, 19, 19, 17, true)
+            && test_full(1, 32, 32, 19, 19, 17, true)
+            && test_full(4, 1,  1,  5, 5, 4, false)
+            && test_full(4, 2,  16, 5, 5, 4, false)
+            && test_full(4, 2,  32, 5, 5, 4, false)
+            && test_full(4, 1,  16, 5, 5, 4, false)
+            && test_full(4, 1,  32, 5, 5, 4, false)
+            && test_full(4, 16, 16, 5, 5, 4, false)
+            && test_full(4, 16, 32, 5, 5, 4, false)
+            && test_full(4, 32, 16, 5, 5, 4, false)
+            && test_full(4, 32, 32, 5, 5, 4, false)
+            && test_full(4, 1,  1,  5, 5, 4, true)
+            && test_full(4, 2,  16, 5, 5, 4, true)
+            && test_full(4, 2,  32, 5, 5, 4, true)
+            && test_full(4, 1,  16, 5, 5, 4, true)
+            && test_full(4, 1,  32, 5, 5, 4, true)
+            && test_full(4, 16, 16, 5, 5, 4, true)
+            && test_full(4, 16, 32, 5, 5, 4, true)
+            && test_full(4, 32, 16, 5, 5, 4, true)
+            && test_full(4, 32, 32, 5, 5, 4, true)
+            && test_full(4, 16, 16, 19, 19, 17, false)
+            && test_full(4, 16, 32, 19, 19, 17, false)
+            && test_full(4, 32, 16, 19, 19, 17, false)
+            && test_full(4, 32, 32, 19, 19, 17, false)
+            && test_full(4, 16, 16, 19, 19, 17, true)
+            && test_full(4, 16, 32, 19, 19, 17, true)
+            && test_full(4, 32, 16, 19, 19, 17, true)
+            && test_full(4, 32, 32, 19, 19, 17, true)
+            && test_full(1, 1, 16, 63, 63, 63, true)
+            && test_full(1, 1, 32, 63, 63, 63, true)
+            && test_full(1, 16, 16, 63, 63, 63, true)
+            && test_full(1, 16, 16, 63, 63, 63, false)
+            && test_full(1, 16, 32, 63, 63, 63, true)
+            && test_full(1, 16, 32, 63, 63, 63, false);
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
         } else {
