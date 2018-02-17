@@ -69,7 +69,7 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
                 && wei_type == data_type::f32
                 && utils::implication(this->with_bias(), this->cdesc_().bias_desc.data_type == f32)
                 && this->attr()->has_default_values();
-            printf("_jit_avx512_common_convolution3D_fwd_t:ok=%d\n", ok);
+            printf(">>>> _jit_avx512_common_convolution3D_fwd_t:ok=%d\n", ok);
             return ok ? status::success : status::unimplemented;
         }
         jit_conv_conf_t jcp_;
