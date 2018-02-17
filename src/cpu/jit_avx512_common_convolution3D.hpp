@@ -27,6 +27,7 @@
 #include "mkldnn_thread.hpp"
 #include "jit_avx512_common_conv3D_kernel.hpp"
 
+static void debug_me() { static volatile int wait = 1; printf("Debug me\n"); while (wait); }
 
 namespace mkldnn {
 namespace impl {
@@ -51,6 +52,7 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
         virtual status_t init() override {
             using namespace prop_kind;
             assert(this->engine()->kind() == engine_kind::cpu);
+            //debug_me();
             bool ok = true
                 && this->set_default_params() == status::success
                 && utils::one_of(this->cdesc_().prop_kind, forward_training,
@@ -70,8 +72,13 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
                 && this->attr()->has_default_values();
             if (!ok) {
                 printf(">>>> _jit_avx512_common_convolution3D_fwd_t unimplemented\n");
+                this->init_info();
+                printf(">>>> (bad) %s\n", this->info_);
                 return status::unimplemented;
             }
+            printf(">>>> _jit_avx512_common_convolution3D_fwd_t implemented\n");
+            this->init_info();
+            printf(">>>> (ok) %s\n", this->info_);
             return jit_avx512_common_conv3D_fwd_kernel::init_conf(
                     jcp_, this->cdesc_(), this->src_pd_, this->weights_pd_,
                     this->dst_pd_,this->bias_pd_, *this->attr(),
