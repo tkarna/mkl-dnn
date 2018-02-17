@@ -25,7 +25,7 @@
 #include "type_helpers.hpp"
 #include "utils.hpp"
 #include "mkldnn_thread.hpp"
-#include "jit_avx512_common_conv_kernel.hpp"
+#include "jit_avx512_common_conv3D_kernel.hpp"
 
 
 namespace mkldnn {
@@ -50,7 +50,6 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
 
         virtual status_t init() override {
             using namespace prop_kind;
-            using namespace data_type;
             assert(this->engine()->kind() == engine_kind::cpu);
             bool ok = true
                 && this->set_default_params() == status::success
@@ -67,10 +66,16 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
                 && src_type == data_type::f32
                 && dst_type == data_type::f32
                 && wei_type == data_type::f32
-                && utils::implication(this->with_bias(), this->cdesc_().bias_desc.data_type == f32)
+                && utils::implication(this->with_bias(), this->cdesc_().bias_desc.data_type == data_type::f32)
                 && this->attr()->has_default_values();
-            printf(">>>> _jit_avx512_common_convolution3D_fwd_t:ok=%d\n", ok);
-            return ok ? status::success : status::unimplemented;
+            if (!ok) {
+                printf(">>>> _jit_avx512_common_convolution3D_fwd_t unimplemented\n");
+                return status::unimplemented;
+            }
+            return jit_avx512_common_conv3D_fwd_kernel::init_conf(
+                    jcp_, this->cdesc_(), this->src_pd_, this->weights_pd_,
+                    this->dst_pd_,this->bias_pd_, *this->attr(),
+                    with_relu, this->negative_slope());
         }
         jit_conv_conf_t jcp_;
 
@@ -130,7 +135,13 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
 
     _jit_avx512_common_convolution3D_fwd_t(const pd_t *pd, const input_vector &inputs,
             const output_vector &outputs)
-        : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
+        : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd)
+    {
+            kernel_ = new  jit_avx512_common_conv3D_fwd_kernel(conf_.jcp_,
+                        *conf_.attr());
+
+    }
+    ~_jit_avx512_common_convolution3D_fwd_t() { delete kernel_; };
 
     typedef typename prec_traits<src_type>::type src_data_t;
     typedef typename prec_traits<wei_type>::type wei_data_t;
@@ -152,6 +163,8 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
 private:
     void execute_forward();
     pd_t conf_;
+    jit_avx512_common_conv3D_fwd_kernel *kernel_;
+
 };
 
 template <impl::data_type_t src_type, impl::data_type_t wei_type = src_type,
