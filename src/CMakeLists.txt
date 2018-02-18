@@ -41,7 +41,8 @@ if(WIN32)
     endif()
 endif()
 
-add_library(${TARGET_NAME} SHARED ${HEADERS} ${SOURCES})
+add_library(${TARGET_NAME} STATIC ${HEADERS} ${SOURCES})
+
 #Add mkldnn.dll to execution PATH
 set(CTESTCONFIG_PATH "${CTESTCONFIG_PATH}\;${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}" PARENT_SCOPE)
 target_link_libraries(${TARGET_NAME} ${${TARGET_NAME}_LINKER_LIBS} ${EXTRA_LIBS})
