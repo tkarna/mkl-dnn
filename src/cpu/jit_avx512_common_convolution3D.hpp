@@ -71,18 +71,15 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
                 && utils::implication(this->with_bias(), this->cdesc_().bias_desc.data_type == data_type::f32)
                 && this->attr()->has_default_values();
             if (!ok) {
-                printf(">>>> _jit_avx512_common_convolution3D_fwd_t unimplemented\n");
-                this->init_info();
-                printf(">>>> (bad) %s\n", this->info_);
                 return status::unimplemented;
             }
-            printf(">>>> _jit_avx512_common_convolution3D_fwd_t implemented\n");
-            this->init_info();
-            printf(">>>> (ok) %s\n", this->info_);
-            return jit_avx512_common_conv3D_fwd_kernel::init_conf(
+            auto status = jit_avx512_common_conv3D_fwd_kernel::init_conf(
                     jcp_, this->cdesc_(), this->src_pd_, this->weights_pd_,
                     this->dst_pd_,this->bias_pd_, *this->attr(),
                     with_relu, this->negative_slope());
+            this->init_info();
+            printf(">>>> jit status=%d %s\n", status, this->info_);
+            return status;
         }
         jit_conv_conf_t jcp_;
 

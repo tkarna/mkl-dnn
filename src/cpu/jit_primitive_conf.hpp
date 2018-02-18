@@ -45,12 +45,12 @@ struct jit_conv_conf_t {
 
     int mb;
     int ngroups, ic, oc;
-    int ih, iw, oh, ow;
-    int l_pad, t_pad;
+    int id, ih, iw, od, oh, ow;
+    int d1_pad, l_pad, t_pad;
     int r_pad, b_pad;
-    int kh, kw;
-    int stride_h, stride_w;
-    int dilate_h, dilate_w;
+    int kd, kh, kw;
+    int stride_d, stride_h, stride_w;
+    int dilate_d, dilate_h, dilate_w;
     memory_format_t src_fmt;
     bool with_bias, with_relu;
     float relu_negative_slope;
