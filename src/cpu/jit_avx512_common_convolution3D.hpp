@@ -141,9 +141,7 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
             const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd)
     {
-            kernel_ = new  jit_avx512_common_conv3D_fwd_kernel(conf_.jcp_,
-                        *conf_.attr());
-
+            kernel_ = new  jit_avx512_common_conv3D_fwd_kernel(conf_.jcp_);
     }
     ~_jit_avx512_common_convolution3D_fwd_t() { delete kernel_; };
 
