@@ -126,6 +126,26 @@ if(WIN32)
     set_property(TEST test-pooling-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
 endif()
 
+add_executable(test-pooling-fwd-ref-cpp test_pooling_fwd_ref.cpp)
+set_property(TARGET test-pooling-fwd-ref-cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(test-pooling-fwd-ref-cpp ${LIB_NAME})
+add_test(test-pooling-fwd-ref-cpp test-pooling-fwd-ref-cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      test-pooling-fwd-ref-cpp.vcxproj.user @ONLY)
+    set_property(TEST test-pooling-fwd-ref-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
+
+add_executable(benchmark-pool-3d-cpp benchmark_pool_3d.cpp)
+set_property(TARGET benchmark-pool-3d-cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(benchmark-pool-3d-cpp ${LIB_NAME})
+add_test(benchmark-pool-3d-cpp benchmark-pool-3d-cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      benchmark-pool-3d-cpp.vcxproj.user @ONLY)
+    set_property(TEST benchmark-pool-3d-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
+
 add_executable(simple-training-net-c simple_training_net.c)
 set_property(TARGET simple-training-net-c PROPERTY C_STANDARD 99)
 if(WIN32)
