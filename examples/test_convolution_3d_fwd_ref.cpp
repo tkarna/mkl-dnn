@@ -40,9 +40,12 @@ bool check_result(std::string array_name, float* array, float* correct,
                   const int len, float tolerance, bool verbose=false) {
     /* Computes the average abs relative error in the output array */
     float rel_error = 0;
+    int nerr = 0;
     for (int i = 0; i < len; i++) {
         float re = (array[i] - correct[i])/correct[i];
-        if (verbose && std::abs(re) > tolerance) {
+        if (std::abs(re) > tolerance) {
+            ++nerr;
+            if (verbose)
             printf(" i=%d res=%.4f cor=%.4f rel_err=%.4g\n", i, array[i], correct[i], re);
         }
         rel_error = std::max(rel_error, std::abs(re));
@@ -53,6 +56,7 @@ bool check_result(std::string array_name, float* array, float* correct,
         std::cout << "SUCCESS" << std::endl;
     } else {
         std::cout << "FAILED" << std::endl;
+        std::cout << "  Len: " << len << "  Nerrs: " << nerr;
         std::cout << "  Relative error: " << rel_error << std::endl;
     }
     return success;

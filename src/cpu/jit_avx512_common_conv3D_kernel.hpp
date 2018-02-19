@@ -43,7 +43,7 @@ struct jit_avx512_common_conv3D_fwd_kernel
     struct kernelrem_t: common {
         kernelrem_t(jit_conv_conf_t &jcp)
         {
-            genkernel(jcp, jcp.kw % 28);
+            genkernel(jcp, jcp.ow % 28);
             jit_ker = getCode();
         }
     };
