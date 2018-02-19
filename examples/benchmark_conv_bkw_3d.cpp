@@ -35,6 +35,8 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
                                   const int weights_width,
                                   const int weights_depth, const int out_height,
                                   const int out_width, const int out_depth,
+                                  const int stride_height, const int stride_width, const int stride_depth,
+                                  const int pad_height, const int pad_width, const int pad_depth,
                                   std::vector<float>& in_diff_dst,
                                   bool test_bias = true,
                                   bool print_arrays = true
@@ -62,8 +64,8 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
     std::vector<float> vect_ref_diff_bias(std::accumulate(bias_dims.begin(),
         bias_dims.end(), 1, std::multiplies<uint32_t>()));
 
-    auto strides = {1, 1, 1};
-    auto padding = {0, 0, 0};
+    auto strides = {stride_depth, stride_height, stride_width};
+    auto padding = {pad_depth, pad_height, pad_width};
     auto dilation = {0, 0, 0};
 
     auto diff_dst_mem = memory({{{dst_dims}, memory::data_type::f32, memory::format::ncdhw}, cpu_engine}, vect_diff_dst.data());
@@ -109,23 +111,23 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
     auto src_fmt = src_md.data.format;
     auto conv_src_fmt = bkww_pd.src_primitive_desc().desc().data.format;
     bool src_needs_reorder = conv_src_fmt != src_fmt;
-    printf("data src format: %d\n", src_fmt);
-    printf("conv src format: %d\n", conv_src_fmt);
-    printf("src format match: %d\n", conv_src_fmt == src_fmt);
+    // printf("data src format: %d\n", src_fmt);
+    // printf("conv src format: %d\n", conv_src_fmt);
+    // printf("src format match: %d\n", conv_src_fmt == src_fmt);
 
     auto weights_fmt = diff_weights_md.data.format;
     auto conv_weights_fmt = bkww_pd.diff_weights_primitive_desc().desc().data.format;
     bool weights_needs_reorder = conv_weights_fmt != weights_fmt;
-    printf("data weights format: %d\n", weights_fmt);
-    printf("conv weights format: %d\n", conv_weights_fmt);
-    printf("weights format match: %d\n", conv_weights_fmt == weights_fmt);
+    // printf("data weights format: %d\n", weights_fmt);
+    // printf("conv weights format: %d\n", conv_weights_fmt);
+    // printf("weights format match: %d\n", conv_weights_fmt == weights_fmt);
 
     auto dst_fmt = diff_dst_md.data.format;
     auto conv_dst_fmt = bkww_pd.diff_dst_primitive_desc().desc().data.format;
     bool dst_needs_reorder = conv_dst_fmt != dst_fmt;
-    printf("data dst format: %d\n", dst_fmt);
-    printf("conv dst format: %d\n", conv_dst_fmt);
-    printf("dst format match: %d\n", conv_dst_fmt == dst_fmt);
+    // printf("data dst format: %d\n", dst_fmt);
+    // printf("conv dst format: %d\n", conv_dst_fmt);
+    // printf("dst format match: %d\n", conv_dst_fmt == dst_fmt);
 
     // NOTE if implemented correctly bias should also need reorder
 
@@ -166,47 +168,38 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
     // create network array
     std::vector<primitive> net;
 
-    printf("input %dx%dx%d kernel %dx%dx%d in_ch=%d out_ch=%d bs=%d\n",
-           in_height, in_width, in_depth,
-           weights_height, weights_width, weights_depth,
-           in_channels, out_channels, nbatch
-          );
-    // FIXME double check complexity
     float complexity = 2*((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
-    std::cout << "flops: " << complexity << "\n";
 
-    const int ntime = 15;
+    const int ntime = 10;
     if (src_needs_reorder) {
-        printf("Running src reorder\n");
         auto op = reorder(src_mem, reorder_src_mem);
         net.clear();
+        const int ntime = 1;
         for (int it = 0; it < ntime; it++) {
             net.push_back(op);
         }
-        auto t1 = Clock::now();
+        // auto t1 = Clock::now();
         // Execute
         stream(stream::kind::eager).submit(net).wait();
-        auto t2 = Clock::now();
-        float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
-        std::cout << "Duration: " << duration << " ms" << "\n";
+        // auto t2 = Clock::now();
+        // float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
+        // std::cout << "src reorder: duration=" << duration << " ms" << "\n";
     }
     if (dst_needs_reorder) {
-        printf("Running diff dst reorder\n");
         auto op = reorder(diff_dst_mem, reorder_diff_dst_mem);
         net.clear();
+        const int ntime = 1;
         for (int it = 0; it < ntime; it++) {
             net.push_back(op);
         }
-        auto t1 = Clock::now();
+        // auto t1 = Clock::now();
         // Execute
         stream(stream::kind::eager).submit(net).wait();
-        auto t2 = Clock::now();
-        float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
-        std::cout << "Duration: " << duration << " ms" << "\n";
+        // auto t2 = Clock::now();
+        // float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
+        // std::cout << "diff dst reorder: duration=" << duration << " ms" << "\n";
     }
 
-
-    printf("Running bkw weights convolution\n");
     net.clear();
     for (int it = 0; it < ntime; it++) {
         net.push_back(bkww_op);
@@ -216,16 +209,28 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
     stream(stream::kind::eager).submit(net).wait();
     auto t2 = Clock::now();
     float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
-    std::cout << "Duration: " << duration << " ms"  << std::endl;
-    std::cout << "MFlops/s: " << complexity/1000./1000./duration*1000.*nbatch  << std::endl << std::endl;
+    float speed = complexity/1000./1000./1000./duration*1000.*nbatch;
+
+    printf("bs=%2d ic=%3d oc=%3d %2dx%2dx%2d w=%dx%dx%d: %8.2f GFlops/s\n",
+        nbatch, in_channels, out_channels, in_height, in_width, in_depth,
+        weights_height, weights_width, weights_depth, speed);
 
 }
 
-void test_bkww_conv(const int bs=1, const int ic=1, const int oc=1, const int insize=64) {
-    printf("\nRunning 3D bkw weights convolution test: full IC=%d OC=%d\n", ic, oc);
-    const int ih=insize, iw=insize, id=insize;
-    const int kh=3, kw=3, kd=3;
-    const int oh=ih-kh+1, ow=iw-kw+1, od=id-kd+1;
+void test_bkww_conv(const int bs, std::vector<int> insize, std::vector<int> kernel,
+                    const int ic, const int oc, std::vector<int> stride,
+                    std::vector<int> pad) {
+    int ih = insize[0], iw = insize[1], id = insize[2];
+    int kh = kernel[0], kw = kernel[1], kd = kernel[2];
+    int sh = stride[0], sw = stride[1], sd = stride[2];
+    int ph = pad[0], pw = pad[1], pd = pad[2];
+    printf("bs=%d %dx%dx%d w=%dx%dx%d st=%dx%dx%d pd=%dx%dx%d ic=%2d oc=%2d ",
+           bs, ih, iw, id,
+           kh, kw, kd,
+           sh, sw, sd,
+           ph, pw, pd,
+           ic, oc);
+    const int oh=(ih-kh+2*ph)/sh+1, ow=(iw-kw+2*pw)/sw+1, od=(id-kd+2*pd)/sd+1;
     int out_len = bs*oc*oh*ow*od;
     std::vector<float> in_diff_dst(out_len, 0);
     for (int mb = 0; mb < bs; mb++) {
@@ -241,26 +246,47 @@ void test_bkww_conv(const int bs=1, const int ic=1, const int oc=1, const int in
     }}
     bool test_bias = true;
     bool print_arrays = false;
-    time_bkw_weights_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd,
-                                 oh, ow, od, in_diff_dst,
+    time_bkw_weights_convolution(bs, ic, oc,
+                                 ih, iw, id,
+                                 kh, kw, kd,
+                                 oh, ow, od,
+                                 sh, sw, sd,
+                                 ph, pw, pd,
+                                 in_diff_dst,
                                  test_bias, print_arrays);
 }
 
 
 int main(int argc, char **argv) {
     try {
-        int in_channels = 16;
-        int out_channels = 16;
-        int insize=64;
-        int batch_size = 1;
-        test_bkww_conv(batch_size, in_channels, out_channels, insize);
-//         std::vector<int> in_sizes = {32, 64};
-//         std::vector<int> batch_sizes = {1, 4, 8};
-//         for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
-//             for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
-//                 test_fwd_conv(*mb, in_channels, out_channels, *s);
-//             }
-//         }
+        // std::vector<int> in_sizes = {32, 64};
+        // std::vector<int> in_channels = {16, 32};
+        // std::vector<int> out_channels = {16, 32};
+        // std::vector<int> batch_sizes = {1, 8};
+        // for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
+        // for(std::vector<int>::iterator ic = in_channels.begin(); ic != in_channels.end(); ++ic) {
+        // for(std::vector<int>::iterator oc = out_channels.begin(); oc != out_channels.end(); ++oc) {
+        //     for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
+        //         test_bkww_conv(*mb, {*s, *s, *s}, {3, 3, 3}, *ic, *oc, {1, 1 ,1}, {0, 0, 0});
+        //
+        //     }
+        // }}}
+
+        // cosmoflow topology
+        test_bkww_conv(1, {128, 128, 128}, {3, 3, 3},   1,  16, {1, 1, 1}, {0, 0, 0});
+        test_bkww_conv(1, { 63,  63,  63}, {4, 4, 4},  16,  32, {1, 1, 1}, {0, 0, 0});
+        test_bkww_conv(1, { 30,  30,  30}, {4, 4, 4},  32,  64, {2, 2, 2}, {0, 0, 0});
+        test_bkww_conv(1, { 14,  14,  14}, {3, 3, 3},  64,  64, {1, 1, 1}, {0, 0, 0});
+        test_bkww_conv(1, { 12,  12,  12}, {2, 2, 2},  64, 128, {1, 1, 1}, {0, 0, 0});
+        test_bkww_conv(1, { 11,  11,  11}, {2, 2, 2}, 128, 128, {1, 1, 1}, {0, 0, 0});
+
+        // medical imaging topology
+        // test_bkww_conv(1, {336, 304, 400}, {3, 5, 5},  1, 32, {1, 1, 1}, {0, 0, 0});
+        // test_bkww_conv(1, {167, 150, 198}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0});
+        // test_bkww_conv(1, {165, 148, 196}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0});
+        // test_bkww_conv(1, { 81,  73,  97}, {2, 3, 3}, 32, 48, {1, 1, 1}, {0, 0, 0});
+        // test_bkww_conv(1, { 80,  71,  95}, {2, 3, 3}, 48, 48, {1, 1, 1}, {0, 0, 0});
+        // test_bkww_conv(1, { 78,  67,  91}, {1, 1, 1}, 48,  2, {1, 1, 1}, {0, 0, 0});
     }
     catch(error& e) {
         std::cerr << "status: " << e.status << std::endl;
