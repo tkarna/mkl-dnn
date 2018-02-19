@@ -35,9 +35,68 @@ using namespace mkldnn::impl::utils;
 using namespace Xbyak;
 
 
-void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp, int nocw)
+void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp, int now)
 {
     printf(">>> genkernel called\n");
+    // Arguments
+    const Reg64 rsrc = rdi;
+    const Reg64 rweights = rsi;
+    const Reg64 rdst = rdx;
+    const Reg64 rbias = rcx;
+    const Reg64 rslope = r8;
+
+    // loop counters
+    Reg64 rKD = r8;
+    Reg64 rKH = r9;
+    Reg64 rKW = rax;
+
+    // src pointers
+    Reg64 rsrcp1 = r10;
+    Reg64 rsrcp2 = r11;
+
+    // increments
+    int incIW = jcp.iw * 64;
+    int incIWIH = incIW * jcp.ih;
+
+    // load the outputs
+    for (int ow = 0; ow < now;++ow)
+        vmovups(Zmm(ow+4), ptr[rdst + ow*64]);
+
+    // loops
+    Label kd_loop, kh_loop, kw_loop;
+    mov(rKD, jcp.kd);
+    L(kd_loop);
+    mov(rsrcp1, rsrc);
+    add(rsrc, incIWIH);
+    mov(rKH, jcp.kh);
+    L(kh_loop);
+    mov(rsrcp2, rsrcp1);
+    add(rsrcp1, incIW);
+    mov(rKW, jcp.kw);
+    L(kw_loop);
+
+    for (int icx = 0; icx < 4; ++icx)
+    {
+        // load 4 vectors of weights
+        for (int ic = 0; ic < 4; ++ic)
+            vmovups(Zmm(ic), ptr[rweights + 64*(4*icx+ic)]);
+        // multiply by inputs and add to accumulators
+        for (int ow = 0; ow < now; ++ow)
+            v4fmaddps(Zmm(ow+4), Zmm(0), ptr[rsrcp2 + 64*ow + 4*4*icx]);
+    }
+    add(rweights, 4*16*16);
+    add(rsrcp2, 4*16);
+    sub(rKW, 1);
+    jnz(kw_loop);
+    sub(rKH, 1);
+    jnz(kh_loop);
+    sub(rKD, 1);
+    jnz(kd_loop);
+
+    for (int ow = 0; ow < now; ++ow)
+        vmovups(ptr[rdst + ow*64], Zmm(ow+4));
+
+    ret();
 }
 
 status_t jit_avx512_common_conv3D_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
