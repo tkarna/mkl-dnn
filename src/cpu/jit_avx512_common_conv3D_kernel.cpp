@@ -37,7 +37,6 @@ using namespace Xbyak;
 
 void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp, int now)
 {
-    printf(">>> genkernel called\n");
     // Arguments
     const Reg64 rsrc = rdi;
     const Reg64 rweights = rsi;
@@ -75,14 +74,25 @@ void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp
     mov(rKW, jcp.kw);
     L(kw_loop);
 
-    for (int icx = 0; icx < 4; ++icx)
-    {
-        // load 4 vectors of weights
-        for (int ic = 0; ic < 4; ++ic)
-            vmovups(Zmm(ic), ptr[rweights + 64*(4*icx+ic)]);
-        // multiply by inputs and add to accumulators
-        for (int ow = 0; ow < now; ++ow)
-            v4fmaddps(Zmm(ow+4), Zmm(0), ptr[rsrcp2 + 64*ow + 4*4*icx]);
+    if (jcp.ver == ver_4fma) {
+        // 4 sets of 4 inputs
+        for (int icx = 0; icx < 4; ++icx)
+        {
+            // load 4 vectors of weights
+            for (int ic = 0; ic < 4; ++ic)
+                vmovups(Zmm(ic), ptr[rweights + 64*(4*icx+ic)]);
+                for (int ow = 0; ow < now; ++ow)
+                    v4fmaddps(Zmm(ow+4), Zmm(0), ptr[rsrcp2 + 64*ow + 4*4*icx]);
+        }
+    } else {
+        assert(jcp.ver == ver_fma);
+        // 16 inputs
+        for (int icx = 0; icx < 16; ++icx) {
+            // load next vector of weights
+            vmovups(Zmm(0), ptr[rweights + 64*icx]);
+            for (int ow = 0; ow < now; ++ow)
+                vfmadd231ps(Zmm(ow+4), Zmm(0), ptr_b[rsrcp2 + 64*ow + 4*icx]);
+        }
     }
     add(rweights, 4*16*16);
     add(rsrcp2, 4*16);
@@ -107,7 +117,6 @@ status_t jit_avx512_common_conv3D_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
 {
     using namespace prop_kind;
 
-    printf(">>>> enter jit3d fwd\n");
     if (!mayiuse(avx512_common))
         return status::unimplemented;
 
@@ -196,7 +205,6 @@ status_t jit_avx512_common_conv3D_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     else
         return status::unimplemented;
 
-    printf(">>> init_conf returns success\n");
     return status::success;
 }
 
