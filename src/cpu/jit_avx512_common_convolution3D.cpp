@@ -63,7 +63,7 @@ void _jit_avx512_common_convolution3D_fwd_t<with_relu, src_type, wei_type, dst_t
     const int OW = conf_.OW();
     const int OD = conf_.OD();
 
-    const int OBLOCK = 14;
+    const int OBLOCK = 28;  // Don't change without changing jit
     const int OWREM = conf_.OW() % OBLOCK;
     const int OWB = conf_.OW() / OBLOCK + (OWREM > 0);
 
@@ -102,6 +102,10 @@ void _jit_avx512_common_convolution3D_fwd_t<with_relu, src_type, wei_type, dst_t
 
     const float nslope = conf_.negative_slope();
 
+    typedef void (*jitkernel_t)(const float *, const float *, float *, uint8_t *, const float *);
+    jitkernel_t jitkernel = (jitkernel_t) kernel_->kernel_->jit_ker;
+    jitkernel_t jitkernelr = (jitkernel_t) kernel_->kernelrem_->jit_ker;
+
     auto get_bias = [=, &bias](size_t off) -> acc_data_t {
 #       define CASE(dt) case dt: \
         return (acc_data_t)(*((const prec_traits<dt>::type *)bias + off))
@@ -124,83 +128,58 @@ void _jit_avx512_common_convolution3D_fwd_t<with_relu, src_type, wei_type, dst_t
                     for (int oh = 0; oh < OH; ++oh) {
                         // case 1: full OBLOCKs
                         for (int owb = 0; owb < OWB - 1 + (OWREM==0); ++owb) {
-                            acc_data_t a[OBLOCK][NBLOCK];
                             for (int _ow = 0; _ow < OBLOCK; ++_ow) {
 #                               pragma omp simd
                                 for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                    a[_ow][_oc] = (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
+                                    dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] =
+                                        (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
                                 }
                             }
                             const int id = od * KSD - padD1;
                             const int ih = oh * KSH - padT;
                             for (int icb = 0; icb < ICB; ++icb) {
-                                for (int kd = 0; kd < KD; ++kd) {
-                                    for (int kh = 0; kh < KH; ++kh) {
-                                        for (int kw = 0; kw < KW; ++kw) {
-#                                           pragma omp simd
-                                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-#                                               pragma unroll_and_jam (OBLOCK)
-                                                for (int _ow = 0; _ow < OBLOCK; ++_ow) {
-                                                    const int iw = (owb*OBLOCK + _ow) * KSW - padL;
-#                                                   pragma unroll (NBLOCK)
-                                                    for (int _ic = 0; _ic < NBLOCK; ++_ic) {
-                                                        a[_ow][_oc] += src[src_ix.off(mb, icb, id + kd, ih + kh, iw + kw)*NBLOCK + _ic] *
-                                                            weights[w_ix.off(ocb, icb, kd, kh, kw)*NBLOCK*NBLOCK +_ic*NBLOCK + _oc];
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                int iwbase = owb*OBLOCK*KSW - padL;
+                                jitkernel(&src[src_ix.off(mb, icb, id, ih, iwbase)*NBLOCK],
+                                       &weights[w_ix.off(ocb, icb, 0, 0, 0)*NBLOCK*NBLOCK],
+                                       &dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK)*NBLOCK],
+                                       0 /* TODO: bias */, &nslope);
                             }
                             for (int _ow = 0; _ow < OBLOCK; ++_ow) {
 #                               pragma omp simd
                                 for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                    if (with_relu && a[_ow][_oc] < (acc_data_t)0)
-                                        a[_ow][_oc] = (acc_data_t)((float)a[_ow][_oc] * nslope);
-                                    dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] = saturate<dst_data_t>(a[_ow][_oc]);
+                                    auto d = dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc];
+                                    if (with_relu && d < (acc_data_t)0)
+                                        d = (acc_data_t)((float)d * nslope);
+                                    dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] = saturate<dst_data_t>(d);
                                 }
                             }
                         }
                         // case 2: remainder
-                        if (OWREM > 0) {
-                            for (int owb = OWB - 1; owb < OWB; ++owb) {
-                                acc_data_t a[OBLOCK][NBLOCK];
-                                for (int _ow = 0; _ow < OBLOCK; ++_ow) {
-#                                   pragma omp simd
-                                    for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                        a[_ow][_oc] = (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
-                                    }
+                        if (OWREM > 0)
+                        for (int owb = OWB-1; owb < OWB; ++owb) {
+                            for (int _ow = 0; _ow < OWREM; ++_ow) {
+#                               pragma omp simd
+                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                    dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] =
+                                        (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
                                 }
-                                const int id = od * KSD - padD1;
-                                const int ih = oh * KSH - padT;
-                                for (int icb = 0; icb < ICB; ++icb) {
-                                    for (int kd = 0; kd < KD; ++kd) {
-                                        for (int kh = 0; kh < KH; ++kh) {
-                                            for (int kw = 0; kw < KW; ++kw) {
-#                                               pragma omp simd
-                                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-#                                                   pragma unroll_and_jam
-                                                    for (int _ow = 0; _ow < OWREM; ++_ow) {
-                                                        const int iw = (owb*OBLOCK + _ow) * KSW - padL;
-#                                                       pragma unroll (NBLOCK)
-                                                        for (int _ic = 0; _ic < NBLOCK; ++_ic) {
-                                                            a[_ow][_oc] += src[src_ix.off(mb, icb, id + kd, ih + kh, iw + kw)*NBLOCK + _ic] *
-                                                                weights[w_ix.off(ocb, icb, kd, kh, kw)*NBLOCK*NBLOCK +_ic*NBLOCK + _oc];
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                for (int _ow = 0; _ow < OWREM; ++_ow) {
-#                                   pragma omp simd
-                                    for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                        if (with_relu && a[_ow][_oc] < (acc_data_t)0)
-                                            a[_ow][_oc] = (acc_data_t)((float)a[_ow][_oc] * nslope);
-                                        dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] = saturate<dst_data_t>(a[_ow][_oc]);
-                                    }
+                            }
+                            const int id = od * KSD - padD1;
+                            const int ih = oh * KSH - padT;
+                            for (int icb = 0; icb < ICB; ++icb) {
+                                int iwbase = owb*OBLOCK*KSW - padL;
+                                jitkernelr(&src[src_ix.off(mb, icb, id, ih, iwbase)*NBLOCK],
+                                       &weights[w_ix.off(ocb, icb, 0, 0, 0)*NBLOCK*NBLOCK],
+                                       &dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK)*NBLOCK],
+                                       0 /* TODO: bias */, &nslope);
+                            }
+                            for (int _ow = 0; _ow < OWREM; ++_ow) {
+#                               pragma omp simd
+                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                    auto d = dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc];
+                                    if (with_relu && d < (acc_data_t)0)
+                                        d = (acc_data_t)((float)d * nslope);
+                                    dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] = saturate<dst_data_t>(d);
                                 }
                             }
                         }
