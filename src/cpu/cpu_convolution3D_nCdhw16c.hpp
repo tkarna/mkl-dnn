@@ -69,7 +69,6 @@ struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
                         && utils::implication(src_type == f32,
                             this->cdesc_().bias_desc.data_type == f32))
                 && this->attr()->has_default_values();
-            printf(">>>> _cpu_convolution3D_nCdhw16c_fwd_t:ok=%d\n", ok);
 
             return ok ? status::success : status::unimplemented;
         }

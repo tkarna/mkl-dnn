@@ -27,7 +27,6 @@
 #include "mkldnn_thread.hpp"
 #include "jit_avx512_common_conv3D_kernel.hpp"
 
-static void debug_me() { static volatile int wait = 1; printf("Debug me\n"); while (wait); }
 
 namespace mkldnn {
 namespace impl {
@@ -77,8 +76,6 @@ struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
                     jcp_, this->cdesc_(), this->src_pd_, this->weights_pd_,
                     this->dst_pd_,this->bias_pd_, *this->attr(),
                     with_relu, this->negative_slope());
-            this->init_info();
-            printf(">>>> jit status=%d %s\n", status, this->info_);
             return status;
         }
         jit_conv_conf_t jcp_;
@@ -210,9 +207,20 @@ struct jit_avx512_common_convolution3D_bwd_data_t: public cpu_primitive_t {
                 && this->desc()->conv_kind == conv_kind::conv3D
                 && this->desc()->diff_src_desc.dims[1] % 16 == 0
                 && this->desc()->diff_dst_desc.dims[1] % 16 == 0
+                && diff_dst_type == data_type::f32
+                && wei_type == data_type::f32
+                && diff_src_type == data_type::f32
                 && this->attr()->has_default_values();
-            return ok ? status::success : status::unimplemented;
+            if (!ok) {
+                return status::unimplemented;
+            }
+            auto status = jit_avx512_common_conv3D_bwd_data_kernel_f32::init_conf(
+                    jcp_, *this->cdesc(), this->diff_src_pd_, this->weights_pd_,
+                    this->diff_dst_pd_);
+            printf(">>> bwd init returns %d\n", status);
+            return status;
         }
+        jit_conv_conf_t jcp_;
 
         inline int MB() const { return this->desc()->diff_src_desc.dims[0]; }
 
