@@ -118,6 +118,12 @@ void compute_fwd_pool(algorithm pooling_alg,
     std::cout << "#iter: " << nruns << "\n";
     std::cout << "Avg duration: " << elapsed/nruns << " ms" << "\n";
     std::cout << "MFlops/s: " << complexity/1000./1000./(elapsed/nruns)*1000.*batch_size << "\n\n";
+
+    printf("CSV,%d,%d,%d,%d,%d,%d,%d,%d,%le,%le,%d,%le,%le\n",
+           src_dims[2], src_dims[3], src_dims[4],
+           kernel[0], kernel[1], kernel[2],
+           dst_dims[1], batch_size,
+           complexity, elapsed, nruns,elapsed/nruns,complexity/1000./1000./(elapsed/nruns)*1000.*batch_size);
 }
 
 void time_pooling_3d(algorithm pooling_alg,
@@ -179,6 +185,8 @@ void test_pool_3d(algorithm pooling_alg, const int insize, const int bs=1) {
 int main(int argc, char **argv) {
     try {
         auto pooling_alg = pooling_max;
+        printf("CSV,id,ih,iw,kd,kh,kw,c,bs,exp-flops,elapsed-ms,iters,avg-ms,eff-flops\n");
+
         std::vector<int> in_sizes = {32, 64, 128};
         std::vector<int> batch_sizes = {1, 4, 8};
         for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
