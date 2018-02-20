@@ -32,7 +32,6 @@ template <data_type_t data_type, data_type_t acc_type>
 void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
     using namespace alg_kind;
     using namespace prop_kind;
-    printf("CRUNCH\n");
     auto alg = conf_.desc()->alg_kind;
 
     auto src = reinterpret_cast<const data_t *>(this->input_memory(0));
