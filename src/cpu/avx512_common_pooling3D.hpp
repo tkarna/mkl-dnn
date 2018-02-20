@@ -45,24 +45,26 @@ struct avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
             assert(engine()->kind() == engine_kind::cpu);
             bool ok = true
                 && set_default_params() == status::success
-                && utils::one_of(desc()->prop_kind, forward_training,
-                        forward_inference)
-                && utils::one_of(desc()->alg_kind, pooling_max,
-                        pooling_avg_include_padding,
-                        pooling_avg_exclude_padding)
+                && desc()->prop_kind == forward_training
+                && desc()->alg_kind == pooling_max
                 && utils::everyone_is(data_type, src_pd()->desc()->data_type,
                         dst_pd()->desc()->data_type)
                 && desc()->accum_data_type == acc_type
                 && this->desc()->pool_kind == pool_kind::pool3D
-                && attr()->has_default_values();
+                && attr()->has_default_values()
+                && C() == 16
+                && ID() == 128 && IH() == 128 && IW() == 128
+                && KD() == 2 && KH() == 2 && KW() == 2
+                && OD() == 127 && OH() == 127 && OW() == 127
+                && KSD() == 1 && KSH() == 1 && KSW() == 1
+                && padD1() == 0 && padT() == 0 && padL() == 0;
+
             if (!ok) return status::unimplemented;
 
-            bool is_training = desc_.prop_kind == forward_training;
-            if (desc()->alg_kind == pooling_max && is_training) {
-                auto indices_desc = *dst_pd()->desc();
-                indices_desc.data_type = pooling_index_data_type(desc());
-                ws_pd_ = cpu_memory_t::pd_t(engine_, &indices_desc);
-            }
+            auto indices_desc = *dst_pd()->desc();
+            indices_desc.data_type = pooling_index_data_type(desc());
+            ws_pd_ = cpu_memory_t::pd_t(engine_, &indices_desc);
+            assert(conf_.workspace_pd().data_type() == data_type::s32);
 
             return status::success;
         }
