@@ -229,10 +229,12 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
     const int KDH = conf_.KDH();
     const int KDW = conf_.KDW();
     const int KDD = conf_.KDD();
+    assert(KDH == 0 && KDW == 0 && KDD == 0);
 
     const int padT = conf_.padT();
     const int padL = conf_.padL();
     const int padD1 = conf_.padD1();
+    printf(">>> bwd data called padD1=%d padT=%d padL=%d KD=%d KH=%d KW=%d\n", padD1,padT,padL,KD,KH,KW);
 
 #   pragma omp parallel for collapse(6) schedule(static)
     for (int g = 0; g < G; ++g) {
@@ -243,23 +245,20 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
                         for (int iw = 0; iw < IW; ++iw) {
                             acc_data_t a[NBLOCK] = {0};
                             for (int ocb = 0; ocb < OCB; ++ocb) {
-                                for (int kd = 0; kd < KD; ++kd) {
-                                    for (int kh = 0; kh < KH; ++kh) {
-                                        for (int kw = 0; kw < KW; ++kw) {
-                                            if (iw + padL < kw * (1 + KDW)
-                                                || ih + padT < kh * (1 + KDH)
-                                                || id + padD1 < kd * (1 + KDD))
-                                                continue;
-                                            int od = id - kd * (1 + KDD) + padD1;
-                                            int oh = ih - kh * (1 + KDH) + padT;
-                                            int ow = iw - kw * (1 + KDW) + padL;
-                                            if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0 ||
-                                                ow >= OW || oh >= OH || od >= OD)
+                                for (int kd = 0; kd < std::min(KD, id+padD1+1); ++kd) {
+                                    for (int kh = 0; kh < std::min(KH, ih+padT+1); ++kh) {
+                                        for (int kw = 0; kw < std::min(KW, iw+padL+1); ++kw) {
+                                            int od = id - kd + padD1;
+                                            int oh = ih - kh + padT;
+                                            int ow = iw - kw + padL;
+                                            if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0)
                                                 continue;
 
                                             od /= KSD;
                                             oh /= KSH;
                                             ow /= KSW;
+                                            if (ow >= OW || oh >= OH || od >= OD)
+                                                continue;
 
                                             auto dst_ix = diff_dst_d.off(mb, (g*OCB + ocb)*NBLOCK, od, oh, ow);
                                             auto w_ix = weights_d.off(ocb*NBLOCK, icb*NBLOCK, kd, kh, kw);

@@ -91,6 +91,7 @@ static const pd_create_f cpu_impl_list[] = {
     //INSTANCE(cpu_convolution3D_nCdhw16c_bwd_data_t<f32, f32, f32, f32>),
     //INSTANCE(cpu_convolution3D_nCdhw16c_bwd_weights_t<f32, f32, f32, f32>),
     INSTANCE(cpu_convolution3D_1ch_fwd_t<f32>),
+    INSTANCE(jit_avx512_common_convolution3D_bwd_data_t<f32, f32, f32, f32>),
     //INSTANCE(cpu_convolution3D_1ch_bwd_data_t<f32, f32, f32, f32>),
     //INSTANCE(cpu_convolution3D_1ch_bwd_weights_t<f32, f32, f32, f32>),
     INSTANCE(ref_convolution3D_fwd_t<f32>),
