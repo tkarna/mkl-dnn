@@ -63,6 +63,108 @@ inline size_t ptr_off_f(const memory::desc &md, int mb, int g, int ic, int id, i
               md.data.dims[3] + ih) * md.data.dims[4] + iw;
 }
 
+void compute_reference_bkw_data_conv(const memory &diff_dst_mem,
+                                     const memory &wei_mem,
+                                     const memory &diff_src_mem,
+                                     const memory::dims &strides,
+                                     const memory::dims &padding) {
+    // NOTE currently without relu, bias and groups
+    // NOTE currently only float data type
+    const int G = 1;
+
+    float *diff_src = (float*)diff_src_mem.get_data_handle();
+    float *diff_dst = (float*)diff_dst_mem.get_data_handle();
+    float *wei = (float*)wei_mem.get_data_handle();
+
+    auto diff_src_pd = diff_src_mem.get_primitive_desc();
+    auto diff_dst_pd = diff_dst_mem.get_primitive_desc();
+    auto wei_pd = wei_mem.get_primitive_desc();
+
+    auto diff_src_md = diff_src_pd.desc();
+    auto diff_dst_md = diff_dst_pd.desc();
+    auto wei_md = wei_pd.desc();
+
+    // assuming ncdhw or oidhw layout
+    assert(diff_src_md.data.ndims == 5);
+    assert(diff_dst_md.data.ndims == 5);
+    assert(wei_md.data.ndims == 5);
+
+    const int MB = diff_src_md.data.dims[0];
+    const int IC = diff_src_md.data.dims[1];
+    const int ID = diff_src_md.data.dims[2];
+    const int IH = diff_src_md.data.dims[3];
+    const int IW = diff_src_md.data.dims[4];
+
+    const int OC = diff_dst_md.data.dims[1];
+    const int OD = diff_dst_md.data.dims[2];
+    const int OH = diff_dst_md.data.dims[3];
+    const int OW = diff_dst_md.data.dims[4];
+
+    const int KD = wei_md.data.dims[2];
+    const int KH = wei_md.data.dims[3];
+    const int KW = wei_md.data.dims[4];
+
+    const int KSD = strides[0];
+    const int KSH = strides[1];
+    const int KSW = strides[2];
+
+    const int KDD = 0;
+    const int KDH = 0;
+    const int KDW = 0;
+
+    const int padD = padding[0];
+    const int padT = padding[1];
+    const int padL = padding[2];
+
+    auto ker = [=](float &d, int g, int mb, int ic, int id, int ih, int iw) {
+        for (int oc = 0; oc < OC; ++oc) {
+            for (int kd = 0; kd < KD; ++kd) {
+                for (int kh = 0; kh < KH; ++kh) {
+                    for (int kw = 0; kw < KW; ++kw) {
+                        if (iw + padL < kw * (1 + KDW)
+                            || ih + padT < kh * (1 + KDH)
+                            || id + padD < kd * (1 + KDD))
+                            continue;
+                        int od = id - kd * (1 + KDD) + padD;
+                        int oh = ih - kh * (1 + KDH) + padT;
+                        int ow = iw - kw * (1 + KDW) + padL;
+                        if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0)
+                            continue;
+
+                        od /= KSD;
+                        oh /= KSH;
+                        ow /= KSW;
+
+                        if (oh < OH && ow < OW && od < OD) {
+                            d += (float)diff_dst[ptr_off_f(diff_dst_md, mb, g, g*OC + oc, od, oh, ow)] *
+                             wei[ptr_off_f(wei_md, oc, 0, ic, kd, kh, kw)];
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+#   pragma omp parallel for collapse(5) schedule(static)
+    for (int g = 0; g < G; ++g) {
+        for (int mb = 0; mb < MB; ++mb) {
+            for (int ic = 0; ic < IC; ++ic) {
+                for (int id = 0; id < ID; ++id) {
+                    for (int ih = 0; ih < IH; ++ih) {
+                        for (int iw = 0; iw < IW; ++iw) {
+                            auto idx = ptr_off_f(diff_src_md, mb, g, g*IC + ic, id, ih, iw);
+                            float a = float(0);
+                            ker(a, g, mb, ic, id, ih, iw);
+                            diff_src[idx] = a;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+}
+
 void compute_reference_fwd_conv(const memory &src_mem,
                                 const memory &wei_mem,
                                 const memory &bias_mem,
@@ -158,6 +260,196 @@ void compute_reference_fwd_conv(const memory &src_mem,
         }
     }
 
+}
+
+bool assert_bwd_convolution(const int nbatch, const int in_channels, const int out_channels,
+                        const int in_height, const int in_width, const int in_depth,
+                        const int weights_height, const int weights_width, const int weights_depth,
+                        const int out_height, const int out_width, const int out_depth,
+                        const int stride,
+                        std::vector<float>& in_weights){
+
+    auto cpu_engine = engine(engine::cpu, 0);
+
+    // Dimensions of memory to be allocated
+    memory::dims conv_src_dims = {nbatch, in_channels, in_depth, in_height, in_width};
+    memory::dims conv_weights_dims = {out_channels, in_channels, weights_depth, weights_height, weights_width};
+    memory::dims conv_dst_dims = {nbatch, out_channels, out_depth, out_height, out_width};
+    memory::dims conv_bias_dims = {out_channels};
+    memory::dims conv_strides = {stride, stride, stride};
+    auto conv_padding = {0, 0, 0};
+
+
+    // User provided memory - in a vector of 1D format.
+    // 1D allocations src, dst, weights and biases.
+    std::vector<float> net_src(nbatch * in_channels * in_height * in_width * in_depth);
+    std::vector<float> net_dst(nbatch * out_channels * out_height * out_width * out_depth);
+    // Accumulate dimensions for weights and bias 
+    // And allocate vectors for those. 
+    std::vector<float> conv_weights(std::accumulate(conv_weights_dims.begin(),
+        conv_weights_dims.end(), 1, std::multiplies<uint32_t>()));
+
+    std::vector<float> conv_bias(std::accumulate(conv_bias_dims.begin(),
+        conv_bias_dims.end(), 1, std::multiplies<uint32_t>()));
+
+    /* create memory for user data */
+    // src, weights and bias.
+    auto conv_user_src_memory = memory({{{conv_src_dims}, memory::data_type::f32, memory::format::ncdhw}, cpu_engine},
+                                       net_src.data());
+    auto ref_src_memory = memory({{{conv_src_dims}, memory::data_type::f32, memory::format::ncdhw}, cpu_engine},
+                                       net_src.data());
+    auto conv_user_weights_memory = memory({{{conv_weights_dims}, memory::data_type::f32,memory::format::oidhw}, cpu_engine},
+                                           conv_weights.data());
+    auto conv_user_bias_memory = memory({{{conv_bias_dims}, memory::data_type::f32, memory::format::x}, cpu_engine},
+                                        conv_bias.data());
+    auto conv_user_dst_memory = memory({{{conv_dst_dims}, memory::data_type::f32, memory::format::ncdhw}, cpu_engine},
+                                       net_dst.data());
+
+    // Metadata- These are only descriptors. Not real allocation of data.
+    /* create memory descriptors for convolution data w/ no specified format */
+    // src, bias, weights, and dst.
+    auto conv_src_md = memory::desc({conv_src_dims}, memory::data_type::f32, memory::format::any);
+    auto conv_weights_md = memory::desc({conv_weights_dims}, memory::data_type::f32, memory::format::any);
+    auto conv_dst_md = memory::desc({conv_dst_dims}, memory::data_type::f32, memory::format::any);
+    auto conv_bias_md = memory::desc({conv_bias_dims}, memory::data_type::f32, memory::format::x);
+
+    /* create a convolution */
+    // dummy fwd needed?
+    auto conv_fwd_desc = convolution_forward::desc(prop_kind::forward,
+        convolution_direct, conv_src_md, conv_weights_md, conv_bias_md,
+        conv_dst_md, conv_strides, conv_padding, conv_padding,
+        padding_kind::zero, conv_kind::conv3D);
+    // convolution descriptor
+    auto conv_bwd_desc = convolution_backward_data::desc(
+        convolution_direct, conv_src_md, conv_weights_md, 
+        conv_dst_md, conv_strides, conv_padding, conv_padding,
+        padding_kind::zero, conv_kind::conv3D);
+
+    // primitive descriptors
+    auto fwd_pd =
+        convolution_forward::primitive_desc(conv_fwd_desc, cpu_engine);
+    //
+    auto conv_bwd_prim_desc =
+        convolution_backward_data::primitive_desc(conv_bwd_desc, cpu_engine, fwd_pd);
+
+    printf("conv dst format: %d\n", conv_bwd_prim_desc.diff_src_primitive_desc().desc().data.format);
+    printf("user dst format: %d\n", conv_user_dst_memory.get_primitive_desc().desc().data.format);
+    printf("dst format match: %d\n", conv_bwd_prim_desc.diff_dst_primitive_desc() == conv_user_dst_memory.get_primitive_desc());
+
+    /* create reorders between user and data if it is needed and
+     *  add it to net before convolution */
+    bool src_needs_reorder = memory::primitive_desc(conv_bwd_prim_desc.diff_src_primitive_desc()) !=
+        conv_user_src_memory.get_primitive_desc();
+    auto conv_src_memory = conv_user_src_memory;
+    if (src_needs_reorder) {
+        conv_src_memory = memory(conv_bwd_prim_desc.diff_src_primitive_desc());
+    }
+    bool dst_needs_reorder = memory::primitive_desc(conv_bwd_prim_desc.diff_dst_primitive_desc()) !=
+        conv_user_dst_memory.get_primitive_desc();
+    auto conv_dst_memory = conv_user_dst_memory;
+    if (dst_needs_reorder) {
+        conv_dst_memory = memory(conv_bwd_prim_desc.diff_dst_primitive_desc());
+    }
+    bool weights_need_reorder = memory::primitive_desc(conv_bwd_prim_desc.weights_primitive_desc()) !=
+        conv_user_weights_memory.get_primitive_desc();
+    auto conv_weights_memory = conv_user_weights_memory;
+    if (weights_need_reorder) {
+        conv_weights_memory = memory(conv_bwd_prim_desc.weights_primitive_desc());
+    }
+
+    /* create convolution primitive */
+    auto conv_op = convolution_backward_data(conv_bwd_prim_desc, conv_dst_memory,
+        conv_weights_memory, conv_src_memory);
+
+    // assign output and weights data
+    float *dst_data = (float *)conv_user_dst_memory.get_data_handle();
+
+
+    for (int mb = 0; mb < nbatch; mb++) {
+    for (int c = 0; c < out_channels; c++) {
+    for (int i = 0; i < out_depth; i++) {
+        for (int j = 0; j < out_height; j++) {
+            for (int k = 0; k < out_width; k++) {
+                const size_t ix = (((mb*out_channels + c)*out_depth + i)*out_height + j)*out_width + k;
+                dst_data[ix] = (i+1)*(j+1)*(k+1);
+            }
+        }
+    }
+    }
+    }
+
+    conv_weights = in_weights;
+    compute_reference_bkw_data_conv(conv_user_dst_memory,
+                               conv_user_weights_memory,
+                               ref_src_memory,
+                               conv_strides, conv_padding);
+    // create network array
+    std::vector<primitive> net;
+
+    printf("output %dx%dx%d kernel %dx%dx%d in_ch=%d out_ch=%d bs=%d\n",
+           out_height, out_width, out_depth,
+           weights_height, weights_width, weights_depth,
+           in_channels, out_channels, nbatch
+          );
+    float complexity = 2.0*((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
+    std::cout << "flops: " << complexity << "\n";
+
+    const int ntime = 1;
+    if (dst_needs_reorder) {
+        printf("Running dst reorder\n");
+        auto op = reorder(conv_user_dst_memory, conv_dst_memory);
+        net.clear();
+        net.push_back(op);
+        auto t1 = Clock::now();
+        // Execute
+        for (int it = 0; it < ntime; it++)
+            stream(stream::kind::eager).submit(net).wait();
+        auto t2 = Clock::now();
+        float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
+        std::cout << "Duration: " << duration << " ms" << "\n";
+        // std::cout << "MFlops/s: " << complexity/1000./1000./duration*1000. << "\n";
+    }
+    if (weights_need_reorder) {
+        printf("Running weight reorder\n");
+        auto op = reorder(conv_user_weights_memory, conv_weights_memory);
+        net.clear();
+        net.push_back(op);
+        auto t1 = Clock::now();
+        // Execute
+        for (int it = 0; it < ntime; it++)
+            stream(stream::kind::eager).submit(net).wait();
+        auto t2 = Clock::now();
+        float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
+        std::cout << "Duration: " << duration << " ms" << "\n";
+        // std::cout << "MFlops/s: " << complexity/1000./1000./duration*1000. << "\n";
+    }
+
+    // compute the output
+    net.clear();
+    net.push_back(reorder(conv_user_dst_memory, conv_dst_memory));
+    net.push_back(reorder(conv_user_weights_memory, conv_weights_memory));
+    net.push_back(conv_op);
+    net.push_back(reorder(conv_src_memory, conv_user_src_memory));
+    stream(stream::kind::eager).submit(net).wait();
+    check_result("bwd", (float *)ref_src_memory.get_data_handle(), (float *)conv_user_src_memory.get_data_handle(),
+        nbatch * in_channels * in_height * in_width * in_depth, 1e-7);
+
+
+    printf("Running backward convolution\n");
+    net.clear();
+    net.push_back(conv_op);
+    auto t1 = Clock::now();
+    // Execute
+    for (int it = 0; it < ntime; it++)
+        stream(stream::kind::eager).submit(net).wait();
+    auto t2 = Clock::now();
+    float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
+    std::cout << "Duration: " << duration << " ms"  << std::endl;
+    std::cout << "BWD: " << nbatch << " " << in_channels << " " << out_channels << " " <<
+            in_height << " " << weights_height << " " <<  stride <<
+        "   GFlops/s: " << complexity/1000./1000./1000./duration*1000.*nbatch  << std::endl << std::endl;
+
+    return 1;
 }
 
 bool assert_fwd_convolution(const int nbatch, const int in_channels, const int out_channels,
@@ -321,7 +613,7 @@ bool assert_fwd_convolution(const int nbatch, const int in_channels, const int o
     net.push_back(conv_op);
     net.push_back(reorder(conv_dst_memory, conv_user_dst_memory));
     stream(stream::kind::eager).submit(net).wait();
-    check_result("output", (float *)ref_dst_memory.get_data_handle(), (float *)conv_user_dst_memory.get_data_handle(),
+    check_result("fwd", (float *)ref_dst_memory.get_data_handle(), (float *)conv_user_dst_memory.get_data_handle(),
         nbatch * out_channels * out_height * out_width * out_depth, 1e-7);
 
 
@@ -365,6 +657,29 @@ bool test_fwd_conv(const int bs, const int ic, const int oc, const int insize, c
                               in_weights);
 
 }
+bool test_bwd_conv(const int bs, const int ic, const int oc, const int insize, const int fSize, const int stride) {
+    const int ih=insize, iw=insize, id=insize;
+    const int kh = fSize, kw = fSize, kd = fSize;
+    const int oh=(ih-kh)/stride+1, ow=(iw-kw)/stride+1, od=(id-kd)/stride+1;
+    int weights_len = oc*ic*kh*kw*kd;
+    std::vector<float> in_weights(weights_len, 0);
+    for (int o = 0; o < oc; o++) {
+        for (int i = 0; i < ic; i++) {
+            for (int d = 0; d < kd; d++) {
+                for (int h = 0; h < kh; h++) {
+                    for (int w = 0; w < kw; w++) {
+                        const int ix = (((o*ic + i)*kd + d)*kh + h)*kw + w;
+                        if ((h==1 || w==2) && (i % 4==0)  && (o % 4==0))
+                            in_weights[ix] = (w+1) + d - (i/4+1) + (o/4+1);
+                    }
+                }
+            }
+        }
+    }
+    return assert_bwd_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od, stride,
+                              in_weights);
+
+}
 
 int main(int argc, char **argv) {
     const int cosmoflow_dims[][6] = {
@@ -378,7 +693,9 @@ int main(int argc, char **argv) {
     };
 
     const int (*dims)[6] = cosmoflow_dims;
-    for (int i = 0; cosmoflow_dims[i][0]; ++i)
+    for (int i = 0; cosmoflow_dims[i][0]; ++i) {
         test_fwd_conv(dims[i][0], dims[i][1], dims[i][2], dims[i][3], dims[i][4], dims[i][5]);
+        test_bwd_conv(dims[i][0], dims[i][1], dims[i][2], dims[i][3], dims[i][4], dims[i][5]);
+    }
     return 0;
 }
