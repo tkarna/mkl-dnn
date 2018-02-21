@@ -236,6 +236,49 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
     const int padD1 = conf_.padD1();
     printf(">>> bwd data called padD1=%d padT=%d padL=%d KD=%d KH=%d KW=%d\n", padD1,padT,padL,KD,KH,KW);
 
+    if (KSD == 1 && KSH == 1 && KSW == 1) {
+#   pragma omp parallel for collapse(6) schedule(static)
+    for (int g = 0; g < G; ++g) {
+        for (int mb = 0; mb < MB; ++mb) {
+            for (int icb = 0; icb < ICB; ++icb) {
+                for (int id = 0; id < ID; ++id) {
+                    for (int ih = 0; ih < IH; ++ih) {
+                        for (int iw = 0; iw < IW; ++iw) {
+                            acc_data_t a[NBLOCK] = {0};
+                            for (int ocb = 0; ocb < OCB; ++ocb) {
+                                for (int kd = 0; kd < std::min(KD, id+padD1+1); ++kd) {
+                                    for (int kh = 0; kh < std::min(KH, ih+padT+1); ++kh) {
+                                        for (int kw = 0; kw < std::min(KW, iw+padL+1); ++kw) {
+                                            int od = id - kd + padD1;
+                                            int oh = ih - kh + padT;
+                                            int ow = iw - kw + padL;
+
+                                            // dst[MB][OC/16][OD][OH][OW][16]
+                                            // wgt[OC/16][IC/16][KD][KH][KW][16][16]
+                                            int dst_ix = NBLOCK * (ow + oh * (OW + od * (OH + ocb * (OD + mb * OCB))));
+                                            int w_ix = NBLOCK * NBLOCK * (kw + kh * (KW + kd * (KH + icb * (KD + ICB * ocb))));
+#pragma ivdep
+                                            for (int _ic = 0; _ic < NBLOCK; ++_ic) {
+                                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                                    a[_ic] += (acc_data_t)diff_dst[dst_ix + _oc] * weights[w_ix + _oc*NBLOCK + _ic];
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            auto ds_idx = diff_src_d.off(mb, (g*ICB + icb)*NBLOCK, id, ih, iw);
+#                           pragma omp simd
+                            for (int _ic = 0; _ic < NBLOCK; ++_ic) {
+                                diff_src[ds_idx + _ic] = saturate<diff_src_data_t>(a[_ic]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    } else {
 #   pragma omp parallel for collapse(6) schedule(static)
     for (int g = 0; g < G; ++g) {
         for (int mb = 0; mb < MB; ++mb) {
@@ -260,8 +303,8 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
                                             if (ow >= OW || oh >= OH || od >= OD)
                                                 continue;
 
-                                            auto dst_ix = diff_dst_d.off(mb, (g*OCB + ocb)*NBLOCK, od, oh, ow);
-                                            auto w_ix = weights_d.off(ocb*NBLOCK, icb*NBLOCK, kd, kh, kw);
+                                            int dst_ix = NBLOCK * (ow + oh * (OW + od * (OH + ocb * (OD + mb * OCB))));
+                                            int w_ix = NBLOCK * NBLOCK * (kw + kh * (KW + kd * (KH + icb * (KD + ICB * ocb))));
                                             for (int _ic = 0; _ic < NBLOCK; ++_ic) {
 #                                               pragma omp simd
                                                 for (int _oc = 0; _oc < NBLOCK; ++_oc) {
@@ -282,6 +325,7 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
                 }
             }
         }
+    }
     }
 }
 
