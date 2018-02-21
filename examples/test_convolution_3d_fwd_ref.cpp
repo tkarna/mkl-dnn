@@ -72,13 +72,14 @@ void compute_reference_fwd_conv(const memory &src_mem,
                                 const memory::dims &strides,
                                 const memory::dims &dilation,
                                 const memory::dims &padding) {
-    // NOTE currently without relu, bias and groups
+    // NOTE currently without relu and groups
     // NOTE currently only float data type
     const int G = 1;
 
     float *src = (float*)src_mem.get_data_handle();
     float *dst = (float*)dst_mem.get_data_handle();
     float *wei = (float*)wei_mem.get_data_handle();
+    float *bias = (float*)bias_mem.get_data_handle();
 
     auto src_pd = src_mem.get_primitive_desc();
     auto dst_pd = dst_mem.get_primitive_desc();
@@ -149,7 +150,7 @@ void compute_reference_fwd_conv(const memory &src_mem,
                 for (int od = 0; od < OD; ++od) {
                     for (int oh = 0; oh < OH; ++oh) {
                         for (int ow = 0; ow < OW; ++ow) {
-                            float a = (float)0;
+                            float a = bias[g*OC + oc];
                             ker(a, g, mb, oc, od, oh, ow);
                             // NOTE omitting saturation in assignment
                             dst[ptr_off_f(dst_md, mb, 0, oc, od, oh, ow)] = a;
@@ -209,23 +210,14 @@ void compute_fwd_conv(const memory &src_mem,
     auto src_fmt = src_md.data.format;
     auto conv_src_fmt = conv_fwd_pd.src_primitive_desc().desc().data.format;
     bool src_needs_reorder = conv_src_fmt != src_fmt;
-    printf("data src format: %d\n", src_fmt);
-    printf("conv src format: %d\n", conv_src_fmt);
-    printf("src format match: %d\n", conv_src_fmt == src_fmt);
 
     auto weights_fmt = weights_md.data.format;
     auto conv_weights_fmt = conv_fwd_pd.weights_primitive_desc().desc().data.format;
     bool weights_needs_reorder = conv_weights_fmt != weights_fmt;
-    printf("data weights format: %d\n", weights_fmt);
-    printf("conv weights format: %d\n", conv_weights_fmt);
-    printf("weights format match: %d\n", conv_weights_fmt == weights_fmt);
 
     auto dst_fmt = dst_md.data.format;
     auto conv_dst_fmt = conv_fwd_pd.dst_primitive_desc().desc().data.format;
     bool dst_needs_reorder = conv_dst_fmt != dst_fmt;
-    printf("data dst format: %d\n", dst_fmt);
-    printf("conv dst format: %d\n", conv_dst_fmt);
-    printf("dst format match: %d\n", conv_dst_fmt == dst_fmt);
 
     /* create reorders between user and data if it is needed and
      *  add it to net before convolution */
@@ -251,11 +243,9 @@ void compute_fwd_conv(const memory &src_mem,
     std::vector<primitive> net;
 
     if (src_needs_reorder) {
-        printf("Creating src reorder\n");
         net.push_back(reorder(src_mem, reorder_src_mem));
     }
     if (weights_needs_reorder) {
-        printf("Creating weight reorder\n");
         net.push_back(reorder(weights_mem, reorder_weights_mem));
     }
 
@@ -263,7 +253,6 @@ void compute_fwd_conv(const memory &src_mem,
     net.push_back(conv_op);
 
     if (dst_needs_reorder) {
-        printf("Creating dst reorder\n");
         net.push_back(reorder(reorder_dst_mem, dst_mem));
     }
 
@@ -275,7 +264,9 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
                         const int in_height, const int in_width, const int in_depth,
                         const int weights_height, const int weights_width, const int weights_depth,
                         const int out_height, const int out_width, const int out_depth,
-                        std::vector<float>& in_weights,
+                        const int stride_d, const int stride_h, const int stride_w,
+                        const int pad_d, const int pad_h, const int pad_w,
+                        std::vector<float>& in_weights, std::vector<float>& in_bias,
                         float tolerance,
                         bool print_arrays = true
                        ){
@@ -288,8 +279,8 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
     memory::dims bias_dims = {out_channels};
     memory::dims dst_dims = {nbatch, out_channels, out_depth, out_height, out_width};
 
-    auto strides = {1, 1, 1};
-    auto padding = {0, 0, 0};
+    auto strides = {stride_d, stride_h, stride_w};
+    auto padding = {pad_d, pad_h, pad_w};
     auto dilation = {0, 0, 0};
 
     std::vector<float> vect_src(std::accumulate(src_dims.begin(),
@@ -325,10 +316,9 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
         vect_src[i] = rand() % 25 + 1.0;
 
     vect_weights = in_weights;
+    vect_bias = in_bias;
 
     bool success = true;
-
-    std::cout << "Forward convolution:" << std::endl;
 
     /* Compute reference solution */
     compute_reference_fwd_conv(src_memory,
@@ -339,6 +329,7 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
 
     // Print the output matrix
     if (print_arrays) {
+        printf("\n");
         print_array_3d("Input", vect_src.data(), src_dims[2], src_dims[3], src_dims[4]);
         print_array_3d("Kernel", vect_weights.data(), weights_dims[2], weights_dims[3], weights_dims[4]);
         print_array_3d("Reference output", vect_ref_dst.data(), dst_dims[2], dst_dims[3], dst_dims[4]);
@@ -361,63 +352,55 @@ bool assert_convolution(const int nbatch, const int in_channels, const int out_c
 }
 
 bool test_simple(const int ic=1, const int oc=1) {
-    printf("\nRunning 3D fwd convolution test: simple IC=%d OC=%d\n", ic, oc);
+    printf(" simple IC=%d OC=%d ", ic, oc);
     const int bs=1;
     const int ih=5, iw=5, id=4;
     const int oh=3, ow=3, od=2;
     const int kh=3, kw=3, kd=3;
     int weights_len = oc*ic*kh*kw*kd;
-    std::vector<float> in_weights(weights_len, 0);
+    std::vector<float> bias(oc, 0);
+    std::vector<float> weights(weights_len, 0);
     for (int o = 0; o < oc; o++) {
         for (int i = 0; i < 1; i++) {
             const int off = kd*kh*kw;
-            in_weights[o*ic*off + i*off + off-1] = 1;
+            weights[o*ic*off + i*off + off-1] = 1;
         }
     }
     return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
-                              in_weights, 1e-25);
+                              1, 1, 1, 0, 0, 0, weights, bias, 1e-25);
 }
 
-bool test_full(const int ic=1, const int oc=1) {
-    printf("\nRunning 3D fwd convolution test: full IC=%d OC=%d\n", ic, oc);
-    const int bs=5;
-    const int ih=5, iw=5, id=4;
-    const int oh=3, ow=3, od=2;
-    const int kh=3, kw=3, kd=3;
+bool test_full(const int bs, std::vector<int> insize, std::vector<int> kernel,
+               const int ic, const int oc, std::vector<int> stride,
+               std::vector<int> pad, bool fill_with_floats=true) {
+    auto float_str = fill_with_floats ? "flt" : "int";
+    int ih = insize[0], iw = insize[1], id = insize[2];
+    int kh = kernel[0], kw = kernel[1], kd = kernel[2];
+    int sh = stride[0], sw = stride[1], sd = stride[2];
+    int ph = pad[0], pw = pad[1], pd = pad[2];
+    printf("bs=%d %dx%dx%d w=%dx%dx%d st=%dx%dx%d pd=%dx%dx%d ic=%2d oc=%2d %s ",
+           bs, ih, iw, id,
+           kh, kw, kd,
+           sh, sw, sd,
+           ph, pw, pd,
+           ic, oc, float_str);
+    const int oh=(ih-kh+2*ph)/sh+1, ow=(iw-kw+2*pw)/sw+1, od=(id-kd+2*pd)/sd+1;
     int weights_len = oc*ic*kh*kw*kd;
-    std::vector<float> in_weights(weights_len, 0);
-    for (size_t i = 0; i < in_weights.size(); i++)
-        in_weights[i] = (float)(rand() % 100)/11.2 + 1.0;
+    std::vector<float> bias(oc, 0);
+    for (size_t i = 0; i < bias.size(); i++)
+        bias[i] = rand() % 8 + 1.0;
+    std::vector<float> weights(weights_len, 0);
+    if (fill_with_floats) {
+        for (size_t i = 0; i < weights.size(); i++)
+            weights[i] = (float)(rand() % 100)/11.2 + 1.0;
+    } else {
+        for (size_t i = 0; i < weights.size(); i++)
+            weights[i] = rand() % 8 + 1.0;
+    }
+    float tolerance = fill_with_floats ? 1e-5 : 1e-25;
     return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
-                              in_weights, 1e-5, false);
-}
-
-bool test_full_large(const int ic=1, const int oc=1) {
-    printf("\nRunning 3D fwd convolution test: full large IC=%d OC=%d\n", ic, oc);
-    const int bs=5;
-    const int ih=19, iw=19, id=17;
-    const int oh=17, ow=17, od=15;
-    const int kh=3, kw=3, kd=3;
-    int weights_len = oc*ic*kh*kw*kd;
-    std::vector<float> in_weights(weights_len, 0);
-    for (size_t i = 0; i < in_weights.size(); i++)
-        in_weights[i] = (float)(rand() % 100)/11.2 + 1.0;
-    return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
-                              in_weights, 1e-5, false);
-}
-
-bool test_full_large_int(const int ic=1, const int oc=1) {
-    printf("\nRunning 3D fwd convolution test: full large int IC=%d OC=%d\n", ic, oc);
-    const int bs=5;
-    const int ih=19, iw=19, id=17;
-    const int oh=17, ow=17, od=15;
-    const int kh=3, kw=3, kd=3;
-    int weights_len = oc*ic*kh*kw*kd;
-    std::vector<float> in_weights(weights_len, 0);
-    for (size_t i = 0; i < in_weights.size(); i++)
-        in_weights[i] = rand() % 8 + 1.0;
-    return assert_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
-                              in_weights, 1e-25, false);
+                              sh, sw, sd, ph, pw, pd,
+                              weights, bias, tolerance, false);
 }
 
 int main(int argc, char **argv) {
@@ -431,34 +414,54 @@ int main(int argc, char **argv) {
             && test_simple(32, 1)
             && test_simple(16, 32)
             && test_simple(32, 16)
-            && test_simple(32, 32)
-            && test_full(1, 1)
-            && test_full(2, 16)
-            && test_full(2, 32)
-            && test_full(1, 16)
-            && test_full(1, 32)
-            && test_full(16, 16)
-            && test_full(16, 32)
-            && test_full(32, 16)
-            && test_full(32, 32)
-            && test_full_large(1, 1)
-            && test_full_large(2, 16)
-            && test_full_large(2, 32)
-            && test_full_large(1, 16)
-            && test_full_large(1, 32)
-            && test_full_large(16, 16)
-            && test_full_large(16, 32)
-            && test_full_large(32, 16)
-            && test_full_large(32, 32)
-            && test_full_large_int(1, 1)
-            && test_full_large_int(2, 16)
-            && test_full_large_int(2, 32)
-            && test_full_large_int(1, 16)
-            && test_full_large_int(1, 32)
-            && test_full_large_int(16, 16)
-            && test_full_large_int(16, 32)
-            && test_full_large_int(32, 16)
-            && test_full_large_int(32, 32);
+            && test_simple(32, 32);
+        std::vector<int> batch_sizes = {1, 4};
+        std::vector<int> in_channels =  {1,  2,  2,  1,  1, 16, 16, 32, 32};
+        std::vector<int> out_channels = {1, 16, 32, 16, 32, 16, 32, 16, 32};
+        std::vector<std::vector<int>> insizes;
+        insizes.push_back(std::vector<int> { 7,  7,  9});
+        insizes.push_back(std::vector<int> {19, 19, 17});
+        std::vector<std::vector<int>> kernels;
+        kernels.push_back(std::vector<int> {1, 1, 1});
+        kernels.push_back(std::vector<int> {2, 2, 2});
+        kernels.push_back(std::vector<int> {3, 3, 3});
+        std::vector<std::vector<int>> strides;
+        strides.push_back(std::vector<int> {1, 1, 1});
+        strides.push_back(std::vector<int> {2, 2, 2});
+        std::vector<std::vector<int>> paddings;
+        paddings.push_back(std::vector<int> {0, 0, 0});
+        for(std::vector<std::vector<int>>::iterator s = insizes.begin(); s != insizes.end(); ++s) {
+        for(std::vector<std::vector<int>>::iterator k = kernels.begin(); k != kernels.end(); ++k) {
+        for(std::vector<std::vector<int>>::iterator st = strides.begin(); st != strides.end(); ++st) {
+        for(std::vector<std::vector<int>>::iterator pd = paddings.begin(); pd != paddings.end(); ++pd) {
+            for(size_t ic = 0; ic < in_channels.size(); ic++) {
+                for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
+                    success = success && test_full(*mb, *s, *k, in_channels[ic], out_channels[ic], *st, *pd, true);
+                    success = success && test_full(*mb, *s, *k, in_channels[ic], out_channels[ic], *st, *pd, false);
+                    if (!success)
+                        break;
+                }
+            }
+        }
+        }
+        }
+        }
+        // cosmoflow layers
+        success = success && test_full(1, {128, 128, 128}, {3, 3, 3}, 1, 16, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {63, 63, 63}, {4, 4, 4}, 16, 32, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {30, 30, 30}, {4, 4, 4}, 32, 64, {2, 2, 2}, {0, 0, 0}, true);
+        success = success && test_full(1, {14, 14, 14}, {3, 3, 3}, 64, 64, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {12, 12, 12}, {2, 2, 2}, 64, 128, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {11, 11, 11}, {2, 2, 2}, 128, 128, {1, 1, 1}, {0, 0, 0}, true);
+        // medical imaging layers
+        // NOTE these take a while to run
+        // success = success && test_full(1, {336, 304, 400}, {3, 5, 5}, 1, 32, {1, 1, 1}, {0, 0, 0}, true);
+        // success = success && test_full(1, {167, 150, 198}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0}, true);
+        // success = success && test_full(1, {165, 148, 196}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {81, 73, 97}, {2, 3, 3}, 32, 48, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {80, 71, 95}, {2, 3, 3}, 48, 48, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {78, 67, 91}, {1, 1, 1}, 48, 2, {1, 1, 1}, {0, 0, 0}, true);
+
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
         } else {
