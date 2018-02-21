@@ -103,12 +103,11 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
                 for (int od = 0; od < OD; ++od) {
                     for (int oh = 0; oh < OH; ++oh) {
                         for (int ow = 0; ow < OW; ++ow) {
-                            // HACK assume no bias for now
                             acc_data_t a[NBLOCK] = {0};
                             if (bias) {
 #                               pragma omp simd
                                 for (int ocb = 0; ocb < NBLOCK; ++ocb) {
-                                    a[ocb] = get_bias(bias_d.off((int)(g*oc + ocb)));
+                                    a[ocb] = get_bias((g*OC + oc)*NBLOCK + ocb);
                                 }
                             }
                             for (int ic = 0; ic < IC; ++ic) {
