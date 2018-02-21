@@ -107,7 +107,7 @@ void compute_fwd_pool(algorithm pooling_alg,
         if(elapsed < ntime_target)
         {
             std::cout << " [took " << elapsed << " discarding....]" << std::endl;
-            nruns = std::max((double)nruns+1.0, nruns*overshoot*ntime_target/elapsed);
+            nruns = std::min(std::max((double)nruns+1.0, nruns*overshoot*ntime_target/elapsed), (double)max_nruns);
         }
     }
 
