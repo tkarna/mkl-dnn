@@ -119,28 +119,31 @@ void compute_fwd_pool(algorithm pooling_alg,
     std::cout << "Avg duration: " << elapsed/nruns << " ms" << "\n";
     std::cout << "MFlops/s: " << complexity/1000./1000./(elapsed/nruns)*1000.*batch_size << "\n\n";
 
-    printf("CSV,%d,%d,%d,%d,%d,%d,%d,%d,%le,%le,%d,%le,%le\n",
+    printf("CSV,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%le,%le,%d,%le,%le\n",
            src_dims[2], src_dims[3], src_dims[4],
            kernel[0], kernel[1], kernel[2],
+           strides[0], strides[1], strides[2],
            dst_dims[1], batch_size,
            complexity, elapsed, nruns,elapsed/nruns,complexity/1000./1000./(elapsed/nruns)*1000.*batch_size);
 }
 
 void time_pooling_3d(algorithm pooling_alg,
-                     const int nbatch, const int in_channels, const int out_channels,
+                     const int nbatch, const int in_channels,
                      const int in_height, const int in_width, const int in_depth,
                      const int ker_height,const int ker_width, const int ker_depth,
                      const int out_height, const int out_width, const int out_depth,
+                     const int stride_height, const int stride_width, const int stride_depth,
+                     const int pad_height, const int pad_width, const int pad_depth,
                      bool print_arrays = true){
 
     auto cpu_engine = engine(engine::cpu, 0);
 
     // Dimensions of memory to be allocated
     memory::dims src_dims = {nbatch, in_channels, in_depth, in_height, in_width};
-    memory::dims dst_dims = {nbatch, out_channels, out_depth, out_height, out_width};
+    memory::dims dst_dims = {nbatch, in_channels, out_depth, out_height, out_width};
 
-    auto strides = {1, 1, 1};
-    auto padding = {0, 0, 0};
+    auto strides = {stride_depth, stride_height, stride_width};
+    auto padding = {pad_depth, pad_height, pad_width};
     auto kernel = {ker_depth, ker_height, ker_width};
 
     std::vector<float> vect_src(std::accumulate(src_dims.begin(),
@@ -174,24 +177,40 @@ void time_pooling_3d(algorithm pooling_alg,
 
 }
 
-void test_pool_3d(algorithm pooling_alg, const int insize, const int bs=1) {
-    const int ic=16;
-    const int ih=insize, iw=insize, id=insize;
-    const int kh=2, kw=2, kd=2;
-    const int oh=ih-kh+1, ow=iw-kw+1, od=id-kd+1;
-    time_pooling_3d(pooling_alg, bs, ic, ic, ih, iw, id, kh, kw, kd, oh, ow, od);
+void test_pool_3d(algorithm pooling_alg,
+                  std::vector<int> insize, const int channels,
+                  std::vector<int> kernel, std::vector<int> strides,
+                  std::vector<int> padding, const int bs=1) {
+    const int ih=insize[0], iw=insize[1], id=insize[2];
+    const int kh=kernel[0], kw=kernel[1], kd=kernel[2];
+    const int sh=strides[0], sw=strides[1], sd=strides[2];
+    const int ph=padding[0], pw=padding[1], pd=padding[2];
+    const int oh=(ih-kh+2*ph)/sh+1, ow=(iw-kw+2*pw)/sw+1, od=(id-kd+2*pd)/sd+1;
+    time_pooling_3d(pooling_alg, bs, channels, ih, iw, id,
+                    kh, kw, kd, oh, ow, od,
+                    sh, sw, sd, ph, pw, pd);
 }
 
 int main(int argc, char **argv) {
     try {
-        auto pooling_alg = pooling_max;
-        printf("CSV,id,ih,iw,kd,kh,kw,c,bs,exp-flops,elapsed-ms,iters,avg-ms,eff-flops\n");
+        printf("CSV,id,ih,iw,kd,kh,kw,sd,sh,sw,c,bs,exp-flops,elapsed-ms,iters,avg-ms,eff-flops\n");
 
-        std::vector<int> in_sizes = {32, 64, 128};
-        std::vector<int> batch_sizes = {1, 4, 8};
+        // cosmoflow layers
+        //                         input size      ch  kernel     stride     padding   batch
+        test_pool_3d(pooling_avg, {126, 126, 126}, 16, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
+        test_pool_3d(pooling_avg, { 60,  60,  60}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
+
+        // medical imaging layers
+        test_pool_3d(pooling_max, {334, 300, 396}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
+        test_pool_3d(pooling_max, {163, 146, 194}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
+        test_pool_3d(pooling_avg, { 79,  69,  93}, 32, {2, 3, 3}, {1, 1, 1}, {0, 0, 0}, 1);
+
+        // 32, 64 cubes (additional -- not in the applications)
+        std::vector<int> in_sizes = {32, 64};
+        std::vector<int> kernel_sizes = {2, 3};
         for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
-            for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
-                test_pool_3d(pooling_alg, *s, *mb);
+            for(std::vector<int>::iterator k = kernel_sizes.begin(); k != kernel_sizes.end(); ++k) {
+                test_pool_3d(pooling_max, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0});
             }
         }
     }
