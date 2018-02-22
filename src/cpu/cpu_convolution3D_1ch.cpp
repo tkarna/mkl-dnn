@@ -22,6 +22,22 @@
 #include "cpu_convolution3D_1ch.hpp"
 #include <iostream>
 
+class MultiviewOffset {
+    /* Computes offsets for multidimensional arrays */
+    size_t dims[5];
+public:
+    MultiviewOffset(size_t n0, size_t n1, size_t n2, size_t n3, size_t n4) {
+        dims[0] = n0;
+        dims[1] = n1;
+        dims[2] = n2;
+        dims[3] = n3;
+        dims[4] = n4;
+    };
+    inline size_t off(size_t i0, size_t i1, size_t i2, size_t i3, size_t i4) {
+        return (((i0*dims[1] + i1)*dims[2] + i2)*dims[3] + i3)*dims[4] + i4;
+    };
+};
+
 namespace mkldnn {
 namespace impl {
 namespace cpu {
@@ -32,11 +48,6 @@ template <bool with_relu, data_type_t src_type, data_type_t wei_type,
          data_type_t dst_type, data_type_t acc_type>
 void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_type>
         ::execute_forward() {
-
-    auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
-    auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
-    auto bias = reinterpret_cast<const char *>(this->input_memory(2));
-    auto dst = reinterpret_cast<dst_data_t *>(this->memory());
 
     const memory_desc_wrapper src_d(conf_.src_pd());
     const memory_desc_wrapper dst_d(conf_.dst_pd());
@@ -52,12 +63,16 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
     const int OW = conf_.OW();
     const int OD = conf_.OD();
 
+    const int OBLOCK = 14;
+    const int OWREM = conf_.OW() % OBLOCK;
+    const int OWB = conf_.OW() / OBLOCK + (OWREM > 0);
+
     const int IH = conf_.IH();
     const int IW = conf_.IW();
     const int ID = conf_.ID();
 
     const int NBLOCK = 16;
-    const int OC = conf_.OC() / G / NBLOCK;
+    const int OCB = conf_.OC() / G / NBLOCK;
     const int IC = conf_.IC() / G;
 
     const int KH = conf_.KH();
@@ -68,13 +83,22 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
     const int KSW = conf_.KSW();
     const int KSD = conf_.KSD();
 
-    const int KDH = conf_.KDH();
-    const int KDW = conf_.KDW();
-    const int KDD = conf_.KDD();
+    // const int KDH = conf_.KDH();
+    // const int KDW = conf_.KDW();
+    // const int KDD = conf_.KDD();
 
-    const int padT = conf_.padT();
-    const int padL = conf_.padL();
-    const int padD1 = conf_.padD1();
+    // const int padT = conf_.padT();
+    // const int padL = conf_.padL();
+    // const int padD1 = conf_.padD1();
+
+    auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
+    auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
+    auto bias = reinterpret_cast<const char *>(this->input_memory(2));
+    auto dst = reinterpret_cast<dst_data_t *>(this->memory());
+
+    auto src_ix_ = MultiviewOffset(MB, IC, ID, IH, IW);
+    auto dst_ix_ = MultiviewOffset(MB, OCB, OD, OH, OW);
+    auto w_ix_ = MultiviewOffset(OCB, IC, KD, KH, KW);
 
     const float nslope = conf_.negative_slope();
 
@@ -92,51 +116,82 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
         return 0;
     };
 
-    assert(G == 0); // NOTE groups not implemented
-    assert(KDH == 0 && KDW == 0 && KDD == 0); // NOTE dilation not implemented
-    assert(padT == 0 && padL == 0 && padD1 == 0); // NOTE pad not implemented
-
-#   pragma omp parallel for collapse(6) schedule(static)
+#   pragma omp parallel for collapse(5) schedule(static)
     for (int g = 0; g < G; ++g) {
         for (int mb = 0; mb < MB; ++mb) {
-            for (int oc = 0; oc < OC; ++oc) {
+            for (int ocb = 0; ocb < OCB; ++ocb) {
                 for (int od = 0; od < OD; ++od) {
                     for (int oh = 0; oh < OH; ++oh) {
-                        for (int ow = 0; ow < OW; ++ow) {
-                            acc_data_t a[NBLOCK] = {0};
-                            if (bias) {
+                        // case 1: full OBLOCKs
+                        for (int owb = 0; owb < OWB - 1 + (OWREM==0); ++owb) {
+                            acc_data_t a[OBLOCK][NBLOCK];
+                            for (int _ow = 0; _ow < OBLOCK; ++_ow) {
 #                               pragma omp simd
-                                for (int ocb = 0; ocb < NBLOCK; ++ocb) {
-                                    a[ocb] = get_bias((g*OC + oc)*NBLOCK + ocb);
+                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                    a[_ow][_oc] = (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
                                 }
                             }
                             for (int ic = 0; ic < IC; ++ic) {
                                 for (int kd = 0; kd < KD; ++kd) {
                                     for (int kh = 0; kh < KH; ++kh) {
-                                        const int id = od * KSD - padD1 + kd * (1 + KDD);
-                                        const int ih = oh * KSH - padT  + kh * (1 + KDH);
-                                        const int iw = ow * KSW - padL;
-                                        // NOTE skip bounds checking for now
-                                        // not needed if no padding/dilation
-
-                                        const size_t src_ix = ((((mb*IC + ic)*ID + id)*IH + ih)*IW + iw);
-                                        const size_t w_ix = ((((oc*IC + ic)*KD +kd)*KH + kh)*KW + 0)*NBLOCK;
                                         for (int kw = 0; kw < KW; ++kw) {
-                                            // NOTE assume no groups for now
 #                                           pragma omp simd
-                                            for (int ocb = 0; ocb < NBLOCK; ++ocb) {
-                                                a[ocb] += src[src_ix + (1 + KDW)*kw] * weights[w_ix + NBLOCK*kw + ocb];
+                                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+#                                               pragma unroll (OBLOCK)
+                                                for (int _ow = 0; _ow < OBLOCK; ++_ow) {
+                                                    a[_ow][_oc] += src[src_ix_.off(mb, ic, od * KSD + kd,
+                                                                                   oh * KSH + kh, (owb*OBLOCK + _ow) * KSW + kw)] *
+                                                        weights[w_ix_.off(ocb, ic, kd, kh, kw)*NBLOCK + _oc];
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                            const size_t dst_ix = ((((mb*OC + oc)*OD + od)*OH + oh)*OW + ow)*NBLOCK;
-#                           pragma omp simd
-                            for (int ocb = 0; ocb < NBLOCK; ++ocb) {
-                                if (with_relu && a[ocb] < (acc_data_t)0)
-                                    a[ocb] = (acc_data_t)((float)a[ocb] * nslope);
-                                dst[dst_ix + ocb] = saturate<dst_data_t>(a[ocb]);
+                            for (int _ow = 0; _ow < OBLOCK; ++_ow) {
+#                               pragma omp simd
+                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                    if (with_relu && a[_ow][_oc] < (acc_data_t)0)
+                                        a[_ow][_oc] = (acc_data_t)((float)a[_ow][_oc] * nslope);
+                                    dst[dst_ix_.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] = saturate<dst_data_t>(a[_ow][_oc]);
+                                }
+                            }
+                        }
+                        // case 2: remainder
+                        if (OWREM > 0) {
+                            for (int owb = OWB - 1; owb < OWB; ++owb) {
+                                acc_data_t a[OBLOCK][NBLOCK];
+                                for (int _ow = 0; _ow < OBLOCK; ++_ow) {
+#                                   pragma omp simd
+                                    for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                        a[_ow][_oc] = (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
+                                    }
+                                }
+                                for (int ic = 0; ic < IC; ++ic) {
+                                    for (int kd = 0; kd < KD; ++kd) {
+                                        for (int kh = 0; kh < KH; ++kh) {
+                                            for (int kw = 0; kw < KW; ++kw) {
+#                                               pragma omp simd
+                                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+#                                                   pragma unroll
+                                                    for (int _ow = 0; _ow < OWREM; ++_ow) {
+                                                        a[_ow][_oc] += src[src_ix_.off(mb, ic, od * KSD + kd,
+                                                                                       oh * KSH + kh, (owb*OBLOCK + _ow) * KSW + kw)] *
+                                                            weights[w_ix_.off(ocb, ic, kd, kh, kw)*NBLOCK + _oc];
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                for (int _ow = 0; _ow < OWREM; ++_ow) {
+#                                   pragma omp simd
+                                    for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                        if (with_relu && a[_ow][_oc] < (acc_data_t)0)
+                                            a[_ow][_oc] = (acc_data_t)((float)a[_ow][_oc] * nslope);
+                                        dst[dst_ix_.off(mb, ocb, od, oh, owb*OBLOCK + _ow)*NBLOCK + _oc] = saturate<dst_data_t>(a[_ow][_oc]);
+                                    }
+                                }
                             }
                         }
                     }
