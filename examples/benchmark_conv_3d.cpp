@@ -365,6 +365,8 @@ bool assert_bwd_convolution(const int nbatch, const int in_channels, const int o
     float *dst_data = (float *)conv_user_dst_memory.get_data_handle();
 
 
+    printf("Computing BWD input data\n");
+    #pragma omp parallel for collapse(4)
     for (int mb = 0; mb < nbatch; mb++) {
     for (int c = 0; c < out_channels; c++) {
     for (int i = 0; i < out_depth; i++) {
@@ -379,6 +381,7 @@ bool assert_bwd_convolution(const int nbatch, const int in_channels, const int o
     }
 
     conv_weights = in_weights;
+    printf("Computing BWD reference data\n");
     compute_reference_bkw_data_conv(conv_user_dst_memory,
                                conv_user_weights_memory,
                                ref_src_memory,
@@ -394,7 +397,7 @@ bool assert_bwd_convolution(const int nbatch, const int in_channels, const int o
     float complexity = 2.0*((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
     std::cout << "flops: " << complexity << "\n";
 
-    const int ntime = 1;
+    const int ntime = 10;
     if (dst_needs_reorder) {
         printf("Running dst reorder\n");
         auto op = reorder(conv_user_dst_memory, conv_dst_memory);
