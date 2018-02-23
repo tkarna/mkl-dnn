@@ -234,24 +234,20 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
     const int padT = conf_.padT();
     const int padL = conf_.padL();
     const int padD1 = conf_.padD1();
-    printf(">>> bwd data called padD1=%d padT=%d padL=%d KD=%d KH=%d KW=%d\n", padD1,padT,padL,KD,KH,KW);
 
     if (KSD == 1 && KSH == 1 && KSW == 1) {
 #   pragma omp parallel for collapse(6) schedule(static)
     for (int g = 0; g < G; ++g) {
         for (int mb = 0; mb < MB; ++mb) {
             for (int icb = 0; icb < ICB; ++icb) {
-                for (int id = 0; id < ID; ++id) {
-                    for (int ih = 0; ih < IH; ++ih) {
-                        for (int iw = 0; iw < IW; ++iw) {
+                for (int od = 0; od < OD; ++od) {
+                    for (int oh = 0; oh < OH; ++oh) {
+                        for (int ow = 0; ow < OW; ++ow) {
                             acc_data_t a[NBLOCK] = {0};
                             for (int ocb = 0; ocb < OCB; ++ocb) {
-                                for (int kd = 0; kd < std::min(KD, id+padD1+1); ++kd) {
-                                    for (int kh = 0; kh < std::min(KH, ih+padT+1); ++kh) {
-                                        for (int kw = 0; kw < std::min(KW, iw+padL+1); ++kw) {
-                                            int od = id - kd + padD1;
-                                            int oh = ih - kh + padT;
-                                            int ow = iw - kw + padL;
+                                for (int kd = 0; kd < KD; ++kd) {
+                                    for (int kh = 0; kh < KH; ++kh) {
+                                        for (int kw = 0; kw < KW; ++kw) {
 
                                             // dst[MB][OC/16][OD][OH][OW][16]
                                             // wgt[OC/16][IC/16][KD][KH][KW][16][16]
@@ -267,6 +263,9 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
                                     }
                                 }
                             }
+                            int id = od - padD1;
+                            int ih = oh - padT;
+                            int iw = ow - padL;
                             auto ds_idx = diff_src_d.off(mb, (g*ICB + icb)*NBLOCK, id, ih, iw);
 #                           pragma omp simd
                             for (int _ic = 0; _ic < NBLOCK; ++_ic) {
@@ -283,25 +282,14 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
     for (int g = 0; g < G; ++g) {
         for (int mb = 0; mb < MB; ++mb) {
             for (int icb = 0; icb < ICB; ++icb) {
-                for (int id = 0; id < ID; ++id) {
-                    for (int ih = 0; ih < IH; ++ih) {
-                        for (int iw = 0; iw < IW; ++iw) {
+                for (int od = 0; od < OD; ++od) {
+                    for (int oh = 0; oh < OH; ++oh) {
+                        for (int ow = 0; ow < OW; ++ow) {
                             acc_data_t a[NBLOCK] = {0};
                             for (int ocb = 0; ocb < OCB; ++ocb) {
-                                for (int kd = 0; kd < std::min(KD, id+padD1+1); ++kd) {
-                                    for (int kh = 0; kh < std::min(KH, ih+padT+1); ++kh) {
-                                        for (int kw = 0; kw < std::min(KW, iw+padL+1); ++kw) {
-                                            int od = id - kd + padD1;
-                                            int oh = ih - kh + padT;
-                                            int ow = iw - kw + padL;
-                                            if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0)
-                                                continue;
-
-                                            od /= KSD;
-                                            oh /= KSH;
-                                            ow /= KSW;
-                                            if (ow >= OW || oh >= OH || od >= OD)
-                                                continue;
+                                for (int kd = 0; kd < KD; ++kd) {
+                                    for (int kh = 0; kh < KH; ++kh) {
+                                        for (int kw = 0; kw < KW; ++kw) {
 
                                             int dst_ix = NBLOCK * (ow + oh * (OW + od * (OH + ocb * (OD + mb * OCB))));
                                             int w_ix = NBLOCK * NBLOCK * (kw + kh * (KW + kd * (KH + icb * (KD + ICB * ocb))));
@@ -315,6 +303,9 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
                                     }
                                 }
                             }
+                            int id = od*KSD - padD1;
+                            int ih = oh*KSH - padT;
+                            int iw = ow*KSW - padL;
                             auto ds_idx = diff_src_d.off(mb, (g*ICB + icb)*NBLOCK, id, ih, iw);
 #                           pragma omp simd
                             for (int _ic = 0; _ic < NBLOCK; ++_ic) {
@@ -458,20 +449,10 @@ using namespace data_type;
 
 template struct _jit_avx512_common_convolution3D_fwd_t<false, f32>;
 template struct _jit_avx512_common_convolution3D_fwd_t<true, f32>;
-// template struct _jit_avx512_common_convolution3D_fwd_t<false, s16, s16, s32, s32>;
-// template struct _jit_avx512_common_convolution3D_fwd_t<true, s16, s16, s32, s32>;
-// template struct _jit_avx512_common_convolution3D_fwd_t<false, u8, s8, s32, s32>;
-// template struct _jit_avx512_common_convolution3D_fwd_t<true, u8, s8, s32, s32>;
-// template struct _jit_avx512_common_convolution3D_fwd_t<false, u8, s8, s8, s32>;
-// template struct _jit_avx512_common_convolution3D_fwd_t<true, u8, s8, s8, s32>;
-// template struct _jit_avx512_common_convolution3D_fwd_t<false, u8, s8, u8, s32>;
-// template struct _jit_avx512_common_convolution3D_fwd_t<true, u8, s8, u8, s32>;
 
 template struct jit_avx512_common_convolution3D_bwd_data_t<f32, f32, f32, f32>;
-template struct jit_avx512_common_convolution3D_bwd_data_t<s32, s16, s16, s32>;
 
 template struct jit_avx512_common_convolution3D_bwd_weights_t<f32, f32, f32, f32>;
-template struct jit_avx512_common_convolution3D_bwd_weights_t<s16, s32, s16, s32>;
 
 }
 }
