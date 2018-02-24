@@ -81,8 +81,8 @@ void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp
             // load 4 vectors of weights
             for (int ic = 0; ic < 4; ++ic)
                 vmovups(Zmm(ic), ptr[rweights + 64*(4*icx+ic)]);
-                for (int ow = 0; ow < now; ++ow)
-                    v4fmaddps(Zmm(ow+4), Zmm(0), ptr[rsrcp2 + 64*ow + 4*4*icx]);
+            for (int ow = 0; ow < now; ++ow)
+                v4fmaddps(Zmm(ow+4), Zmm(0), ptr[rsrcp2 + 64*ow + 4*4*icx]);
         }
     } else {
         assert(jcp.ver == ver_fma);
