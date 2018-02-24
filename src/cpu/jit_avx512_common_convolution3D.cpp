@@ -210,9 +210,9 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
     const int OH = conf_.OH();
     const int OW = conf_.OW();
     const int OD = conf_.OD();
-    const int IH = conf_.IH();
-    const int IW = conf_.IW();
-    const int ID = conf_.ID();
+    // const int IH = conf_.IH();
+    // const int IW = conf_.IW();
+    // const int ID = conf_.ID();
 
     const int NBLOCK = 16;
     const int OCB = conf_.OC() / G / NBLOCK;
@@ -226,10 +226,10 @@ void jit_avx512_common_convolution3D_bwd_data_t<diff_src_type, wei_type, diff_ds
     const int KSW = conf_.KSW();
     const int KSD = conf_.KSD();
 
-    const int KDH = conf_.KDH();
-    const int KDW = conf_.KDW();
-    const int KDD = conf_.KDD();
-    assert(KDH == 0 && KDW == 0 && KDD == 0);
+    // const int KDH = conf_.KDH();
+    // const int KDW = conf_.KDW();
+    // const int KDD = conf_.KDD();
+    // assert(KDH == 0 && KDW == 0 && KDD == 0);
 
     const int padT = conf_.padT();
     const int padL = conf_.padL();

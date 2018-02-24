@@ -41,8 +41,8 @@ void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp
     const Reg64 rsrc = rdi;
     const Reg64 rweights = rsi;
     const Reg64 rdst = rdx;
-    const Reg64 rbias = rcx;
-    const Reg64 rslope = r8;
+    // const Reg64 rbias = rcx;
+    // const Reg64 rslope = r8;
 
     // loop counters
     Reg64 rKD = r8;
@@ -79,7 +79,7 @@ void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp
         for (int icx = 0; icx < 4; ++icx)
         {
             // load 4 vectors of weights
-            for (int ic = 0; ic < 4; ++ic)
+            for (int ic = 0; ic < 4; ++ic) // NOTE gcc complains about intendation in this loop
                 vmovups(Zmm(ic), ptr[rweights + 64*(4*icx+ic)]);
                 for (int ow = 0; ow < now; ++ow)
                     v4fmaddps(Zmm(ow+4), Zmm(0), ptr[rsrcp2 + 64*ow + 4*4*icx]);
@@ -120,18 +120,10 @@ status_t jit_avx512_common_conv3D_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     if (!mayiuse(avx512_common))
         return status::unimplemented;
 
-    const int simd_w = cpu_isa_traits<avx512_common>::vlen / sizeof(float);
-
     const memory_desc_wrapper src_d(&src_pd);
     const memory_desc_wrapper weights_d(&weights_pd);
     const memory_desc_wrapper dst_d(&dst_pd);
     const memory_desc_wrapper bias_d(&bias_pd);
-
-    const int regs = 28;
-    const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
-
-    // we don't understand groups for 3D conv
-    assert(!with_groups);
 
     jcp = zero<decltype(jcp)>();
     jcp.ngroups = 1;
