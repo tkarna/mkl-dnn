@@ -145,14 +145,14 @@ struct ref_pooling3D_bwd_t: public cpu_primitive_t {
             return status::success;
         }
 
-        inline int MB() const { return desc_.src_desc.dims[0]; }
-        inline int C() const { return desc_.src_desc.dims[1]; }
-        inline int ID() const { return desc_.src_desc.dims[2]; }
-        inline int IH() const { return desc_.src_desc.dims[3]; }
-        inline int IW() const { return desc_.src_desc.dims[4]; }
-        inline int OD() const { return desc_.dst_desc.dims[2]; }
-        inline int OH() const { return desc_.dst_desc.dims[3]; }
-        inline int OW() const { return desc_.dst_desc.dims[4]; }
+        inline int MB() const { return desc_.diff_src_desc.dims[0]; }
+        inline int C() const { return desc_.diff_src_desc.dims[1]; }
+        inline int ID() const { return desc_.diff_src_desc.dims[2]; }
+        inline int IH() const { return desc_.diff_src_desc.dims[3]; }
+        inline int IW() const { return desc_.diff_src_desc.dims[4]; }
+        inline int OD() const { return desc_.diff_dst_desc.dims[2]; }
+        inline int OH() const { return desc_.diff_dst_desc.dims[3]; }
+        inline int OW() const { return desc_.diff_dst_desc.dims[4]; }
 
         inline int KD() const { return desc_.kernel[0]; }
         inline int KH() const { return desc_.kernel[1]; }
