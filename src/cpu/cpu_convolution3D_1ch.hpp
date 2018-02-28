@@ -234,9 +234,9 @@ struct cpu_convolution3D_1ch_bwd_data_t: public cpu_primitive_t {
             using namespace memory_format;
 
             if (diff_src_pd_.desc()->format == any)
-                CHECK(diff_src_pd_.set_format(nCdhw16c));
+                CHECK(diff_src_pd_.set_format(ncdhw));
             if (diff_dst_pd_.desc()->format == any)
-                CHECK(diff_dst_pd_.set_format(diff_src_pd_.desc()->format));
+                CHECK(diff_dst_pd_.set_format(nCdhw16c));
             if (weights_pd_.desc()->format == any)
                 CHECK(weights_pd_.set_format(this->with_groups() ? gOidhw16o : Oidhw16o));
             return status::success;
