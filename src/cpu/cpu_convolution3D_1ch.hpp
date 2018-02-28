@@ -192,6 +192,7 @@ struct cpu_convolution3D_1ch_bwd_data_t: public cpu_primitive_t {
                 && this->desc()->conv_kind == conv_kind::conv3D
                 && this->desc()->diff_dst_desc.dims[1] % 16 == 0
                 && this->attr()->has_default_values();
+            printf("--> 1ch bkw data check: %d\n", ok);
             return ok ? status::success : status::unimplemented;
         }
 
