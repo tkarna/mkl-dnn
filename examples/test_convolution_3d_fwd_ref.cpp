@@ -38,7 +38,7 @@ void print_array_3d(std::string name, float* array, int n, int m, int l) {
 
 bool check_result(std::string array_name, float* array, float* correct,
                   const int len, float tolerance, bool verbose=false) {
-    /* Computes the average abs relative error in the output array */
+    /* Computes the maximum abs relative error in the output array */
     float rel_error = 0;
     int nerr = 0;
     for (int i = 0; i < len; i++) {
