@@ -82,7 +82,7 @@ void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp
             for (int ic = 0; ic < 4; ++ic)
                 vmovups(Zmm(ic), ptr[rweights + 64*(4*icx+ic)]);
             for (int ow = 0; ow < now; ++ow)
-                v4fmaddps(Zmm(ow+4), Zmm(0), ptr[rsrcp2 + 64*ow + 4*4*icx]);
+                v4fmaddps(Zmm(ow+4), Zmm(0), ptr[rsrcp2 + 64*ow*jcp.stride_w + 4*4*icx]);
         }
     } else {
         assert(jcp.ver == ver_fma);
@@ -91,7 +91,7 @@ void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp
             // load next vector of weights
             vmovups(Zmm(0), ptr[rweights + 64*icx]);
             for (int ow = 0; ow < now; ++ow)
-                vfmadd231ps(Zmm(ow+4), Zmm(0), ptr_b[rsrcp2 + 64*ow + 4*icx]);
+                vfmadd231ps(Zmm(ow+4), Zmm(0), ptr_b[rsrcp2 + 64*ow*jcp.stride_w + 4*icx]);
         }
     }
     add(rweights, 4*16*16);
