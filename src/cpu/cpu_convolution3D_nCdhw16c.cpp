@@ -224,7 +224,7 @@ void cpu_convolution3D_nCdhw16c_bwd_data_t<diff_src_type, wei_type, diff_dst_typ
     const memory_desc_wrapper diff_src_d(conf_.diff_src_pd());
     const memory_desc_wrapper weights_d(conf_.weights_pd(0));
 
-    // const bool with_groups = conf_.with_groups();
+    const bool with_groups = conf_.with_groups();
 
     const int G = conf_.G();
     const int MB = conf_.MB();
@@ -235,10 +235,8 @@ void cpu_convolution3D_nCdhw16c_bwd_data_t<diff_src_type, wei_type, diff_dst_typ
     const int IW = conf_.IW();
     const int ID = conf_.ID();
 
-    const int NBLOCK = 16;
-    const int OCB = conf_.OC() / G / NBLOCK;
-    const int ICB = conf_.IC() / G / NBLOCK;
-
+    const int OC = conf_.OC() / G;
+    const int IC = conf_.IC() / G;
     const int KH = conf_.KH();
     const int KW = conf_.KW();
     const int KD = conf_.KD();
@@ -255,50 +253,48 @@ void cpu_convolution3D_nCdhw16c_bwd_data_t<diff_src_type, wei_type, diff_dst_typ
     const int padL = conf_.padL();
     const int padD1 = conf_.padD1();
 
-#   pragma omp parallel for collapse(6) schedule(static)
+    auto ker = [=](acc_data_t &d, int g, int mb, int ic, int id, int ih, int iw) {
+        for (int oc = 0; oc < OC; ++oc) {
+            for (int kd = 0; kd < KD; ++kd) {
+                for (int kh = 0; kh < KH; ++kh) {
+                    for (int kw = 0; kw < KW; ++kw) {
+                        if (iw + padL < kw * (1 + KDW)
+                            || ih + padT < kh * (1 + KDH)
+                            || id + padD1 < kd * (1 + KDD))
+                            continue;
+                        int od = id - kd * (1 + KDD) + padD1;
+                        int oh = ih - kh * (1 + KDH) + padT;
+                        int ow = iw - kw * (1 + KDW) + padL;
+                        if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0)
+                            continue;
+
+                        od /= KSD;
+                        oh /= KSH;
+                        ow /= KSW;
+
+                        if (oh < OH && ow < OW && od < OD) {
+                            d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc,
+                                    od, oh, ow)] * (with_groups
+                                        ? weights[weights_d.off(g, oc, ic, kd, kh, kw)]
+                                        : weights[weights_d.off(oc, ic, kd, kh, kw)]);
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+#   pragma omp parallel for collapse(5) schedule(static)
     for (int g = 0; g < G; ++g) {
         for (int mb = 0; mb < MB; ++mb) {
-            for (int icb = 0; icb < ICB; ++icb) {
+            for (int ic = 0; ic < IC; ++ic) {
                 for (int id = 0; id < ID; ++id) {
                     for (int ih = 0; ih < IH; ++ih) {
                         for (int iw = 0; iw < IW; ++iw) {
-                            acc_data_t a[NBLOCK] = {0};
-                            for (int ocb = 0; ocb < OCB; ++ocb) {
-                                for (int kd = 0; kd < KD; ++kd) {
-                                    for (int kh = 0; kh < KH; ++kh) {
-                                        for (int kw = 0; kw < KW; ++kw) {
-                                            if (iw + padL < kw * (1 + KDW)
-                                                || ih + padT < kh * (1 + KDH)
-                                                || id + padD1 < kd * (1 + KDD))
-                                                continue;
-                                            int od = id - kd * (1 + KDD) + padD1;
-                                            int oh = ih - kh * (1 + KDH) + padT;
-                                            int ow = iw - kw * (1 + KDW) + padL;
-                                            if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0 ||
-                                                ow >= OW || oh >= OH || od >= OD)
-                                                continue;
-
-                                            od /= KSD;
-                                            oh /= KSH;
-                                            ow /= KSW;
-
-                                            auto dst_ix = diff_dst_d.off(mb, (g*OCB + ocb)*NBLOCK, od, oh, ow);
-                                            auto w_ix = weights_d.off(ocb*NBLOCK, icb*NBLOCK, kd, kh, kw);
-                                            for (int _ic = 0; _ic < NBLOCK; ++_ic) {
-#                                               pragma omp simd
-                                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                                    a[_ic] += (acc_data_t)diff_dst[dst_ix + _oc] * weights[w_ix + _oc*NBLOCK + _ic];
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            auto ds_idx = diff_src_d.off(mb, (g*ICB + icb)*NBLOCK, id, ih, iw);
-#                           pragma omp simd
-                            for (int _ic = 0; _ic < NBLOCK; ++_ic) {
-                                diff_src[ds_idx + _ic] = saturate<diff_src_data_t>(a[_ic]);
-                            }
+                            auto ds_idx = diff_src_d.off(mb, g*IC + ic, id, ih, iw);
+                            acc_data_t a = acc_data_t(0);
+                            ker(a, g, mb, ic, id, ih, iw);
+                            diff_src[ds_idx] = saturate<diff_src_data_t>(a);
                         }
                     }
                 }
