@@ -195,6 +195,7 @@ struct jit_avx512_common_convolution3D_bwd_data_t: public cpu_primitive_t {
         virtual status_t init() override {
             using namespace prop_kind;
             assert(this->engine()->kind() == engine_kind::cpu);
+            return status::unimplemented;   // temp until Jit is fixed
             bool ok = true
                 && this->set_default_params() == status::success
                 && utils::one_of(this->desc()->prop_kind, backward,
