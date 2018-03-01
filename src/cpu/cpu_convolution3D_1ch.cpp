@@ -460,7 +460,6 @@ void cpu_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
         }
     }
     } else {
-    printf("--> using 1ch bkw weight redution\n");
     // use reduction
     // allocate a destination array for each thread
     acc_data_t* private_weights = new acc_data_t[max_nthr*OCB*IC*KD*KH*KW*NBLOCK];

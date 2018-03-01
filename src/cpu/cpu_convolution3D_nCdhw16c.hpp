@@ -195,7 +195,6 @@ struct cpu_convolution3D_nCdhw16c_bwd_data_t: public cpu_primitive_t {
                 && this->desc()->diff_src_desc.dims[1] % 16 == 0
                 && this->desc()->diff_dst_desc.dims[1] % 16 == 0
                 && this->attr()->has_default_values();
-            printf("--> 16ch bkw data check: %d\n", ok);
             return ok ? status::success : status::unimplemented;
         }
 
