@@ -500,21 +500,22 @@ int main(int argc, char **argv) {
             && test_full(1, {63, 63, 63}, {2, 3, 3}, 32, 16, {1, 1, 1}, {0, 0, 0}, true)
             && test_full(1, {63, 63, 63}, {2, 3, 3}, 16, 32, {1, 1, 1}, {0, 0, 0}, true);
 
-//         // cosmoflow layers
-//         success = success && test_full(1, {128, 128, 128}, {3, 3, 3}, 1, 16, {1, 1, 1}, {0, 0, 0}, true);
-//         success = success && test_full(1, {63, 63, 63}, {4, 4, 4}, 16, 32, {1, 1, 1}, {0, 0, 0}, true);
-//         success = success && test_full(1, {30, 30, 30}, {4, 4, 4}, 32, 64, {2, 2, 2}, {0, 0, 0}, true);
-//         success = success && test_full(1, {14, 14, 14}, {3, 3, 3}, 64, 64, {1, 1, 1}, {0, 0, 0}, true);
-//         success = success && test_full(1, {12, 12, 12}, {2, 2, 2}, 64, 128, {1, 1, 1}, {0, 0, 0}, true);
-//         success = success && test_full(1, {11, 11, 11}, {2, 2, 2}, 128, 128, {1, 1, 1}, {0, 0, 0}, true);
-//         // medical imaging layers
-//         // NOTE these take a while to run
-//         // success = success && test_full(1, {336, 304, 400}, {3, 5, 5}, 1, 32, {1, 1, 1}, {0, 0, 0}, true);
-//         // success = success && test_full(1, {167, 150, 198}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0}, true);
-//         // success = success && test_full(1, {165, 148, 196}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0}, true);
-//         success = success && test_full(1, {81, 73, 97}, {2, 3, 3}, 32, 48, {1, 1, 1}, {0, 0, 0}, true);
-//         success = success && test_full(1, {80, 71, 95}, {2, 3, 3}, 48, 48, {1, 1, 1}, {0, 0, 0}, true);
-//         success = success && test_full(1, {78, 67, 91}, {1, 1, 1}, 48, 2, {1, 1, 1}, {0, 0, 0}, true);
+        // cosmoflow layers
+        success = success && test_full(1, {128, 128, 128}, {3, 3, 3}, 1, 16, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {63, 63, 63}, {4, 4, 4}, 16, 32, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {30, 30, 30}, {4, 4, 4}, 32, 64, {2, 2, 2}, {0, 0, 0}, true);
+        success = success && test_full(1, {14, 14, 14}, {3, 3, 3}, 64, 64, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {12, 12, 12}, {2, 2, 2}, 64, 128, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {11, 11, 11}, {2, 2, 2}, 128, 128, {1, 1, 1}, {0, 0, 0}, true);
+
+        // medical imaging layers
+        // NOTE these take a while to run
+        // success = success && test_full(1, {336, 304, 400}, {3, 5, 5}, 1, 32, {1, 1, 1}, {0, 0, 0}, true);
+        // success = success && test_full(1, {167, 150, 198}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0}, true);
+        // success = success && test_full(1, {165, 148, 196}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {81, 73, 97}, {2, 3, 3}, 32, 48, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {80, 71, 95}, {2, 3, 3}, 48, 48, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {78, 67, 91}, {1, 1, 1}, 48, 2, {1, 1, 1}, {0, 0, 0}, true);
 
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;

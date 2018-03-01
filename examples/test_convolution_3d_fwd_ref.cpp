@@ -450,6 +450,15 @@ int main(int argc, char **argv) {
         }
         }
         }
+        // larger layers
+        success = success
+            && test_full(1, {63, 63, 63}, {2, 3, 3},  1, 16, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3},  2, 16, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3},  1, 32, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3}, 16, 16, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3}, 32, 16, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3}, 16, 32, {1, 1, 1}, {0, 0, 0}, true);
+
         // cosmoflow layers
         success = success && test_full(1, {128, 128, 128}, {3, 3, 3}, 1, 16, {1, 1, 1}, {0, 0, 0}, true);
         success = success && test_full(1, {63, 63, 63}, {4, 4, 4}, 16, 32, {1, 1, 1}, {0, 0, 0}, true);
@@ -457,6 +466,7 @@ int main(int argc, char **argv) {
         success = success && test_full(1, {14, 14, 14}, {3, 3, 3}, 64, 64, {1, 1, 1}, {0, 0, 0}, true);
         success = success && test_full(1, {12, 12, 12}, {2, 2, 2}, 64, 128, {1, 1, 1}, {0, 0, 0}, true);
         success = success && test_full(1, {11, 11, 11}, {2, 2, 2}, 128, 128, {1, 1, 1}, {0, 0, 0}, true);
+
         // medical imaging layers
         // NOTE these take a while to run
         // success = success && test_full(1, {336, 304, 400}, {3, 5, 5}, 1, 32, {1, 1, 1}, {0, 0, 0}, true);
