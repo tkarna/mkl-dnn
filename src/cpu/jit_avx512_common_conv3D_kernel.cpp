@@ -41,8 +41,8 @@ void jit_avx512_common_conv3D_fwd_kernel::common::genkernel(jit_conv_conf_t &jcp
     const Reg64 rsrc = rdi;
     const Reg64 rweights = rsi;
     const Reg64 rdst = rdx;
-    const Reg64 rbias = rcx;
-    const Reg64 rslope = r8;
+    // const Reg64 rbias = rcx;
+    // const Reg64 rslope = r8;
 
     // loop counters
     Reg64 rKD = r8;
@@ -125,8 +125,8 @@ status_t jit_avx512_common_conv3D_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     const memory_desc_wrapper dst_d(&dst_pd);
     const memory_desc_wrapper bias_d(&bias_pd);
 
-    const int regs = 28;
-    const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
+    // const int regs = 28;
+    // const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
 
     // we don't understand groups for 3D conv
     assert(!with_groups);
