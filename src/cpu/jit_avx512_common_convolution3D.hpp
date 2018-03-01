@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_CONVOLUTION3D_NCDHW16C
-#define CPU_CONVOLUTION3D_NCDHW16C
+#ifndef JIT_AVX512_COMMON_CONVOLUTION3D
+#define JIT_AVX512_COMMON_CONVOLUTION3D
 
 #include <assert.h>
 
@@ -25,6 +25,8 @@
 #include "type_helpers.hpp"
 #include "utils.hpp"
 #include "mkldnn_thread.hpp"
+#include "jit_avx512_common_conv3D_kernel.hpp"
+
 
 namespace mkldnn {
 namespace impl {
@@ -34,22 +36,22 @@ template <bool with_relu, impl::data_type_t src_type,
          impl::data_type_t wei_type = src_type,
          impl::data_type_t dst_type = src_type,
          impl::data_type_t acc_type = dst_type>
-struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
+struct _jit_avx512_common_convolution3D_fwd_t: public cpu_primitive_t {
     struct pd_t: public _cpu_convolution_fwd_pd_t<with_relu> {
         pd_t(engine_t *engine,
                 const typename pd_t::base_desc_t *adesc,
                 const primitive_attr_t *attr,
                 const typename pd_t::base_class *hint_fwd_pd)
             : _cpu_convolution_fwd_pd_t<with_relu>(engine, adesc, attr,
-                    hint_fwd_pd)
+                    hint_fwd_pd), jcp_({})
         {}
 
-        DECLARE_COMMON_PD_T(_cpu_convolution3D_nCdhw16c_fwd_t);
+        DECLARE_COMMON_PD_T(_jit_avx512_common_convolution3D_fwd_t);
 
         virtual status_t init() override {
             using namespace prop_kind;
-            using namespace data_type;
             assert(this->engine()->kind() == engine_kind::cpu);
+            //debug_me();
             bool ok = true
                 && this->set_default_params() == status::success
                 && utils::one_of(this->cdesc_().prop_kind, forward_training,
@@ -62,16 +64,21 @@ struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
                 && this->cdesc_().conv_kind == conv_kind::conv3D
                 && this->cdesc_().src_desc.dims[1] % 16 == 0
                 && this->cdesc_().dst_desc.dims[1] % 16 == 0
-                && utils::implication(this->with_bias(), true
-                        && utils::implication(src_type == u8,
-                            utils::one_of(this->cdesc_().bias_desc.data_type,
-                                f32, s32, s8, u8))
-                        && utils::implication(src_type == f32,
-                            this->cdesc_().bias_desc.data_type == f32))
+                && src_type == data_type::f32
+                && dst_type == data_type::f32
+                && wei_type == data_type::f32
+                && utils::implication(this->with_bias(), this->cdesc_().bias_desc.data_type == data_type::f32)
                 && this->attr()->has_default_values();
-
-            return ok ? status::success : status::unimplemented;
+            if (!ok) {
+                return status::unimplemented;
+            }
+            auto status = jit_avx512_common_conv3D_fwd_kernel::init_conf(
+                    jcp_, this->cdesc_(), this->src_pd_, this->weights_pd_,
+                    this->dst_pd_,this->bias_pd_, *this->attr(),
+                    with_relu, this->negative_slope());
+            return status;
         }
+        jit_conv_conf_t jcp_;
 
         inline int MB() const { return this->cdesc_().src_desc.dims[0]; }
 
@@ -127,9 +134,13 @@ struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
         }
     };
 
-    _cpu_convolution3D_nCdhw16c_fwd_t(const pd_t *pd, const input_vector &inputs,
+    _jit_avx512_common_convolution3D_fwd_t(const pd_t *pd, const input_vector &inputs,
             const output_vector &outputs)
-        : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
+        : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd)
+    {
+            kernel_ = new  jit_avx512_common_conv3D_fwd_kernel(conf_.jcp_);
+    }
+    ~_jit_avx512_common_convolution3D_fwd_t() { delete kernel_; };
 
     typedef typename prec_traits<src_type>::type src_data_t;
     typedef typename prec_traits<wei_type>::type wei_data_t;
@@ -151,24 +162,26 @@ struct _cpu_convolution3D_nCdhw16c_fwd_t: public cpu_primitive_t {
 private:
     void execute_forward();
     pd_t conf_;
+    jit_avx512_common_conv3D_fwd_kernel *kernel_;
+
 };
 
 template <impl::data_type_t src_type, impl::data_type_t wei_type = src_type,
          impl::data_type_t dst_type = src_type,
          impl::data_type_t acc_type = dst_type>
-using cpu_convolution3D_nCdhw16c_fwd_t = _cpu_convolution3D_nCdhw16c_fwd_t<false, src_type, wei_type,
+using jit_avx512_common_convolution3D_fwd_t = _jit_avx512_common_convolution3D_fwd_t<false, src_type, wei_type,
       dst_type, acc_type>;
 
 template <impl::data_type_t src_type, impl::data_type_t wei_type = src_type,
          impl::data_type_t dst_type = src_type,
          impl::data_type_t acc_type = dst_type>
-using cpu_convolution3D_nCdhw16c_relu_t = _cpu_convolution3D_nCdhw16c_fwd_t<true, src_type, wei_type,
+using jit_avx512_common_convolution3D_relu_t = _jit_avx512_common_convolution3D_fwd_t<true, src_type, wei_type,
       dst_type, acc_type>;
 
 template <impl::data_type_t diff_src_type, impl::data_type_t wei_type,
          impl::data_type_t diff_dst_type,
          impl::data_type_t acc_type = diff_src_type>
-struct cpu_convolution3D_nCdhw16c_bwd_data_t: public cpu_primitive_t {
+struct jit_avx512_common_convolution3D_bwd_data_t: public cpu_primitive_t {
     struct pd_t: public cpu_convolution_bwd_data_pd_t {
         pd_t(engine_t *engine,
                 const convolution_desc_t *adesc,
@@ -177,11 +190,12 @@ struct cpu_convolution3D_nCdhw16c_bwd_data_t: public cpu_primitive_t {
             : cpu_convolution_bwd_data_pd_t(engine, adesc, attr, hint_fwd_pd)
         {}
 
-        DECLARE_COMMON_PD_T(cpu_convolution3D_nCdhw16c_bwd_data_t);
+        DECLARE_COMMON_PD_T(jit_avx512_common_convolution3D_bwd_data_t);
 
         virtual status_t init() override {
             using namespace prop_kind;
             assert(this->engine()->kind() == engine_kind::cpu);
+            return status::unimplemented;   // temp until Jit is fixed
             bool ok = true
                 && this->set_default_params() == status::success
                 && utils::one_of(this->desc()->prop_kind, backward,
@@ -194,9 +208,20 @@ struct cpu_convolution3D_nCdhw16c_bwd_data_t: public cpu_primitive_t {
                 && this->desc()->conv_kind == conv_kind::conv3D
                 && this->desc()->diff_src_desc.dims[1] % 16 == 0
                 && this->desc()->diff_dst_desc.dims[1] % 16 == 0
+                && diff_dst_type == data_type::f32
+                && wei_type == data_type::f32
+                && diff_src_type == data_type::f32
                 && this->attr()->has_default_values();
-            return ok ? status::success : status::unimplemented;
+            if (!ok) {
+                return status::unimplemented;
+            }
+            auto status = jit_avx512_common_conv3D_bwd_data_kernel_f32::init_conf(
+                    jcp_, *this->cdesc(), this->diff_src_pd_, this->weights_pd_,
+                    this->diff_dst_pd_);
+            printf(">>> bwd init returns %d\n", status);
+            return status;
         }
+        jit_conv_conf_t jcp_;
 
         inline int MB() const { return this->desc()->diff_src_desc.dims[0]; }
 
@@ -245,7 +270,7 @@ struct cpu_convolution3D_nCdhw16c_bwd_data_t: public cpu_primitive_t {
         }
     };
 
-    cpu_convolution3D_nCdhw16c_bwd_data_t(const pd_t *pd, const input_vector &inputs,
+    jit_avx512_common_convolution3D_bwd_data_t(const pd_t *pd, const input_vector &inputs,
             const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
 
@@ -274,7 +299,7 @@ private:
 template <impl::data_type_t src_type, impl::data_type_t diff_wei_type,
          impl::data_type_t diff_dst_type,
          impl::data_type_t acc_type = diff_wei_type>
-struct cpu_convolution3D_nCdhw16c_bwd_weights_t: public cpu_primitive_t {
+struct jit_avx512_common_convolution3D_bwd_weights_t: public cpu_primitive_t {
     struct pd_t: public cpu_convolution_bwd_weights_pd_t {
         pd_t(engine_t *engine,
                 const convolution_desc_t *adesc,
@@ -283,7 +308,7 @@ struct cpu_convolution3D_nCdhw16c_bwd_weights_t: public cpu_primitive_t {
             : cpu_convolution_bwd_weights_pd_t(engine, adesc, attr, hint_fwd_pd)
         {}
 
-        DECLARE_COMMON_PD_T(cpu_convolution3D_nCdhw16c_bwd_weights_t);
+        DECLARE_COMMON_PD_T(jit_avx512_common_convolution3D_bwd_weights_t);
 
         virtual status_t init() override {
             using namespace prop_kind;
@@ -357,7 +382,7 @@ struct cpu_convolution3D_nCdhw16c_bwd_weights_t: public cpu_primitive_t {
         }
     };
 
-    cpu_convolution3D_nCdhw16c_bwd_weights_t(const pd_t *pd, const input_vector &inputs,
+    jit_avx512_common_convolution3D_bwd_weights_t(const pd_t *pd, const input_vector &inputs,
             const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
 
