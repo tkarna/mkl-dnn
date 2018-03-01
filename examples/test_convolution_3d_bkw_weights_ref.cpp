@@ -300,6 +300,8 @@ bool assert_bkw_weights_convolution(const int nbatch, const int in_channels,
                                     const int weights_width,
                                     const int weights_depth, const int out_height,
                                     const int out_width, const int out_depth,
+                                    const int stride_d, const int stride_h, const int stride_w,
+                                    const int pad_d, const int pad_h, const int pad_w,
                                     std::vector<float>& in_diff_dst,
                                     float tolerance,
                                     bool test_bias = true,
@@ -328,8 +330,8 @@ bool assert_bkw_weights_convolution(const int nbatch, const int in_channels,
     std::vector<float> vect_ref_diff_bias(std::accumulate(bias_dims.begin(),
         bias_dims.end(), 1, std::multiplies<uint32_t>()));
 
-    auto strides = {1, 1, 1};
-    auto padding = {0, 0, 0};
+    auto strides = {stride_d, stride_h, stride_w};
+    auto padding = {pad_d, pad_h, pad_w};
     auto dilation = {0, 0, 0};
 
     auto diff_dst_memory = memory({{{dst_dims}, memory::data_type::f32, memory::format::ncdhw}, cpu_engine}, vect_diff_dst.data());
@@ -402,17 +404,28 @@ bool test_simple(const int bs=1, const int ic=1, const int oc=1) {
     bool test_bias = true;
     bool print_arrays = true;
     return assert_bkw_weights_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
+                              1, 1, 1, 0, 0, 0,
                               in_diff_dst, 1e-25, test_bias, print_arrays);
 }
 
-bool test_full(const int bs=1, const int ic=1, const int oc=1, const int ih=5, const int iw=5, const int id=4, bool fill_float=true) {
-    auto float_str = fill_float ? "float" : "int";
-    printf("\nRunning 3D bkw weights convolution test: full %s bs=%d %dx%dx%d IC=%d OC=%d\n", float_str, bs, ih, iw, id, ic, oc);
-    const int kh=3, kw=3, kd=3;
-    const int oh=ih-kh+1, ow=iw-kw+1, od=id-kd+1;
+bool test_full(const int bs, std::vector<int> insize, std::vector<int> kernel,
+               const int ic, const int oc, std::vector<int> stride,
+               std::vector<int> pad, bool fill_with_floats=true) {
+    auto float_str = fill_with_floats ? "flt" : "int";
+    int ih = insize[0], iw = insize[1], id = insize[2];
+    int kh = kernel[0], kw = kernel[1], kd = kernel[2];
+    int sh = stride[0], sw = stride[1], sd = stride[2];
+    int ph = pad[0], pw = pad[1], pd = pad[2];
+    printf("bs=%d %dx%dx%d w=%dx%dx%d st=%dx%dx%d pd=%dx%dx%d ic=%2d oc=%2d %s ",
+           bs, ih, iw, id,
+           kh, kw, kd,
+           sh, sw, sd,
+           ph, pw, pd,
+           ic, oc, float_str);
+    const int oh=(ih-kh+2*ph)/sh+1, ow=(iw-kw+2*pw)/sw+1, od=(id-kd+2*pd)/sd+1;
     int out_len = bs*oc*oh*ow*od;
     std::vector<float> in_diff_dst(out_len, 0);
-    if (fill_float) {
+    if (fill_with_floats) {
         for (size_t i = 0; i < in_diff_dst.size(); i++)
             in_diff_dst[i] = (float)(rand() % 100)/11.2 + 1.0;
     } else {
@@ -421,8 +434,9 @@ bool test_full(const int bs=1, const int ic=1, const int oc=1, const int ih=5, c
     }
     bool test_bias = true;
     bool print_arrays = false;
-    float tolerance = fill_float ? 5e-5 : 1e-25;
+    float tolerance = fill_with_floats ? 5e-5 : 1e-25;
     return assert_bkw_weights_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
+                              sh, sw, sd, ph, pw, pd,
                               in_diff_dst, tolerance, test_bias, print_arrays);
 }
 
@@ -444,65 +458,64 @@ int main(int argc, char **argv) {
             && test_simple(4, 32, 1)
             && test_simple(4, 16, 32)
             && test_simple(4, 32, 16)
-            && test_simple(4, 32, 32)
-            && test_full(1, 1,  1,  5, 5, 4, false)
-            && test_full(1, 2,  16, 5, 5, 4, false)
-            && test_full(1, 2,  32, 5, 5, 4, false)
-            && test_full(1, 1,  16, 5, 5, 4, false)
-            && test_full(1, 1,  32, 5, 5, 4, false)
-            && test_full(1, 16, 16, 5, 5, 4, false)
-            && test_full(1, 16, 32, 5, 5, 4, false)
-            && test_full(1, 32, 16, 5, 5, 4, false)
-            && test_full(1, 32, 32, 5, 5, 4, false)
-            && test_full(1, 1,  1,  5, 5, 4, true)
-            && test_full(1, 2,  16, 5, 5, 4, true)
-            && test_full(1, 2,  32, 5, 5, 4, true)
-            && test_full(1, 1,  16, 5, 5, 4, true)
-            && test_full(1, 1,  32, 5, 5, 4, true)
-            && test_full(1, 16, 16, 5, 5, 4, true)
-            && test_full(1, 16, 32, 5, 5, 4, true)
-            && test_full(1, 32, 16, 5, 5, 4, true)
-            && test_full(1, 32, 32, 5, 5, 4, true)
-            && test_full(1, 16, 16, 19, 19, 17, false)
-            && test_full(1, 16, 32, 19, 19, 17, false)
-            && test_full(1, 32, 16, 19, 19, 17, false)
-            && test_full(1, 32, 32, 19, 19, 17, false)
-            && test_full(1, 16, 16, 19, 19, 17, true)
-            && test_full(1, 16, 32, 19, 19, 17, true)
-            && test_full(1, 32, 16, 19, 19, 17, true)
-            && test_full(1, 32, 32, 19, 19, 17, true)
-            && test_full(4, 1,  1,  5, 5, 4, false)
-            && test_full(4, 2,  16, 5, 5, 4, false)
-            && test_full(4, 2,  32, 5, 5, 4, false)
-            && test_full(4, 1,  16, 5, 5, 4, false)
-            && test_full(4, 1,  32, 5, 5, 4, false)
-            && test_full(4, 16, 16, 5, 5, 4, false)
-            && test_full(4, 16, 32, 5, 5, 4, false)
-            && test_full(4, 32, 16, 5, 5, 4, false)
-            && test_full(4, 32, 32, 5, 5, 4, false)
-            && test_full(4, 1,  1,  5, 5, 4, true)
-            && test_full(4, 2,  16, 5, 5, 4, true)
-            && test_full(4, 2,  32, 5, 5, 4, true)
-            && test_full(4, 1,  16, 5, 5, 4, true)
-            && test_full(4, 1,  32, 5, 5, 4, true)
-            && test_full(4, 16, 16, 5, 5, 4, true)
-            && test_full(4, 16, 32, 5, 5, 4, true)
-            && test_full(4, 32, 16, 5, 5, 4, true)
-            && test_full(4, 32, 32, 5, 5, 4, true)
-            && test_full(4, 16, 16, 19, 19, 17, false)
-            && test_full(4, 16, 32, 19, 19, 17, false)
-            && test_full(4, 32, 16, 19, 19, 17, false)
-            && test_full(4, 32, 32, 19, 19, 17, false)
-            && test_full(4, 16, 16, 19, 19, 17, true)
-            && test_full(4, 16, 32, 19, 19, 17, true)
-            && test_full(4, 32, 16, 19, 19, 17, true)
-            && test_full(4, 32, 32, 19, 19, 17, true)
-            && test_full(1, 1, 16, 63, 63, 63, true)
-            && test_full(1, 1, 32, 63, 63, 63, true)
-            && test_full(1, 16, 16, 63, 63, 63, true)
-            && test_full(1, 16, 16, 63, 63, 63, false)
-            && test_full(1, 16, 32, 63, 63, 63, true)
-            && test_full(1, 16, 32, 63, 63, 63, false);
+            && test_simple(4, 32, 32);
+
+        std::vector<int> batch_sizes = {1, 4};
+        std::vector<int> in_channels =  {1,  2,  2,  1,  1, 16, 16, 32, 32};
+        std::vector<int> out_channels = {1, 16, 32, 16, 32, 16, 32, 16, 32};
+        std::vector<std::vector<int>> insizes;
+        insizes.push_back(std::vector<int> { 7,  7,  9});
+        insizes.push_back(std::vector<int> {19, 19, 17});
+        std::vector<std::vector<int>> kernels;
+        kernels.push_back(std::vector<int> {1, 1, 1});
+        kernels.push_back(std::vector<int> {2, 2, 2});
+        kernels.push_back(std::vector<int> {3, 3, 3});
+        std::vector<std::vector<int>> strides;
+        strides.push_back(std::vector<int> {1, 1, 1});
+        strides.push_back(std::vector<int> {2, 2, 2});
+        std::vector<std::vector<int>> paddings;
+        paddings.push_back(std::vector<int> {0, 0, 0});
+        for(std::vector<std::vector<int>>::iterator s = insizes.begin(); s != insizes.end(); ++s) {
+        for(std::vector<std::vector<int>>::iterator k = kernels.begin(); k != kernels.end(); ++k) {
+        for(std::vector<std::vector<int>>::iterator st = strides.begin(); st != strides.end(); ++st) {
+        for(std::vector<std::vector<int>>::iterator pd = paddings.begin(); pd != paddings.end(); ++pd) {
+            for(size_t ic = 0; ic < in_channels.size(); ic++) {
+                for(std::vector<int>::iterator mb = batch_sizes.begin(); mb != batch_sizes.end(); ++mb) {
+                    success = success && test_full(*mb, *s, *k, in_channels[ic], out_channels[ic], *st, *pd, true);
+                    success = success && test_full(*mb, *s, *k, in_channels[ic], out_channels[ic], *st, *pd, false);
+                    if (!success)
+                        break;
+                }
+            }
+        }
+        }
+        }
+        }
+        // larger layers
+        success = success
+            && test_full(1, {63, 63, 63}, {2, 3, 3},  1, 16, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3},  2, 16, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3},  1, 32, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3}, 16, 16, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3}, 32, 16, {1, 1, 1}, {0, 0, 0}, true)
+            && test_full(1, {63, 63, 63}, {2, 3, 3}, 16, 32, {1, 1, 1}, {0, 0, 0}, true);
+
+//         // cosmoflow layers
+//         success = success && test_full(1, {128, 128, 128}, {3, 3, 3}, 1, 16, {1, 1, 1}, {0, 0, 0}, true);
+//         success = success && test_full(1, {63, 63, 63}, {4, 4, 4}, 16, 32, {1, 1, 1}, {0, 0, 0}, true);
+//         success = success && test_full(1, {30, 30, 30}, {4, 4, 4}, 32, 64, {2, 2, 2}, {0, 0, 0}, true);
+//         success = success && test_full(1, {14, 14, 14}, {3, 3, 3}, 64, 64, {1, 1, 1}, {0, 0, 0}, true);
+//         success = success && test_full(1, {12, 12, 12}, {2, 2, 2}, 64, 128, {1, 1, 1}, {0, 0, 0}, true);
+//         success = success && test_full(1, {11, 11, 11}, {2, 2, 2}, 128, 128, {1, 1, 1}, {0, 0, 0}, true);
+//         // medical imaging layers
+//         // NOTE these take a while to run
+//         // success = success && test_full(1, {336, 304, 400}, {3, 5, 5}, 1, 32, {1, 1, 1}, {0, 0, 0}, true);
+//         // success = success && test_full(1, {167, 150, 198}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0}, true);
+//         // success = success && test_full(1, {165, 148, 196}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0}, true);
+//         success = success && test_full(1, {81, 73, 97}, {2, 3, 3}, 32, 48, {1, 1, 1}, {0, 0, 0}, true);
+//         success = success && test_full(1, {80, 71, 95}, {2, 3, 3}, 48, 48, {1, 1, 1}, {0, 0, 0}, true);
+//         success = success && test_full(1, {78, 67, 91}, {1, 1, 1}, 48, 2, {1, 1, 1}, {0, 0, 0}, true);
+
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
         } else {
