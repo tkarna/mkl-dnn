@@ -1061,7 +1061,7 @@ bool test_bkw_weights_full(const int bs, std::vector<int> insize, std::vector<in
     }
     bool test_bias = true;
     bool print_arrays = false;
-    float tolerance = fill_with_floats ? 1e-4 : 1e-25;
+    float tolerance = fill_with_floats ? 5e-4 : 1e-25;
     return assert_bkw_weights_convolution(bs, ic, oc, ih, iw, id, kh, kw, kd, oh, ow, od,
                               sh, sw, sd, ph, pw, pd,
                               in_diff_dst, tolerance, test_bias, print_arrays);
