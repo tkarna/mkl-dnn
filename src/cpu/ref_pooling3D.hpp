@@ -90,6 +90,17 @@ struct ref_pooling3D_fwd_t: public cpu_primitive_t {
         inline int padB() const { return desc_.padding[1][1]; }
         inline int padL() const { return desc_.padding[0][2]; }
         inline int padR() const { return desc_.padding[1][2]; }
+
+    protected:
+        virtual status_t set_default_params() override {
+            using namespace memory_format;
+            if (this->src_pd_.desc()->format == any)
+                CHECK(this->src_pd_.set_format(ncdhw));
+            if (this->dst_pd_.desc()->format == any)
+                CHECK(this->dst_pd_.set_format(ncdhw));
+            return status::success;
+        }
+
     };
 
     ref_pooling3D_fwd_t(const pd_t *pd, const input_vector &inputs,
@@ -168,6 +179,17 @@ struct ref_pooling3D_bwd_t: public cpu_primitive_t {
         inline int padB() const { return desc_.padding[1][1]; }
         inline int padL() const { return desc_.padding[0][2]; }
         inline int padR() const { return desc_.padding[1][2]; }
+
+    protected:
+        virtual status_t set_default_params() {
+            using namespace memory_format;
+            if (diff_dst_pd_.desc()->format == any)
+                CHECK(diff_dst_pd_.set_format(ncdhw));
+            if (diff_src_pd_.desc()->format == any)
+                CHECK(diff_src_pd_.set_format(ncdhw));
+            return status::success;
+        }
+
     };
 
     ref_pooling3D_bwd_t(const pd_t *pd, const input_vector &inputs,
