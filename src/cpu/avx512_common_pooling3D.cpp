@@ -24,6 +24,22 @@
 
 #include "avx512_common_pooling3D.hpp"
 
+class MultiviewOffset {
+    /* Computes offsets for multidimensional arrays */
+    size_t dims[5];
+public:
+    MultiviewOffset(size_t n0, size_t n1, size_t n2, size_t n3, size_t n4) {
+        dims[0] = n0;
+        dims[1] = n1;
+        dims[2] = n2;
+        dims[3] = n3;
+        dims[4] = n4;
+    };
+    inline size_t off(size_t i0, size_t i1, size_t i2, size_t i3, size_t i4) {
+        return (((i0*dims[1] + i1)*dims[2] + i2)*dims[3] + i3)*dims[4] + i4;
+    };
+};
+
 namespace mkldnn {
 namespace impl {
 namespace cpu {
@@ -44,81 +60,23 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
     const memory_desc_wrapper ws_d(conf_.workspace_pd());
     const data_type_t ws_dt = ws ? ws_d.data_type() : data_type::undef;
 
-    const int IH = conf_.IH();
-    const int IW = conf_.IW();
-    const int ID = conf_.ID();
-    const int KH = conf_.KH();
-    const int KW = conf_.KW();
-    const int KD = conf_.KD();
-    const int SH = conf_.KSH();
-    const int SW = conf_.KSW();
-    const int SD = conf_.KSD();
-    const int padT = conf_.padT();
-    const int padL = conf_.padL();
-    const int padD1 = conf_.padD1();
-
-    auto apply_offset = [=](int index, int offset) {
-        return (index > offset) ? index - offset : 0;
-    };
-
-    auto ker_max = [=](data_t *d, int mb, int oc, int od, int oh, int ow) {
-        for (int kd = 0; kd < KD; ++kd) {
-            for (int kh = 0; kh < KH; ++kh) {
-                for (int kw = 0; kw < KW; ++kw) {
-                    const int id = od * SD - padD1 + kd;
-                    const int ih = oh * SH - padT + kh;
-                    const int iw = ow * SW - padL + kw;
-
-                    if (id < 0 || id >= ID) continue;
-                    if (ih < 0 || ih >= IH) continue;
-                    if (iw < 0 || iw >= IW) continue;
-
-                    auto s = src[src_d.off(mb, oc, id, ih, iw)];
-                    if (s > d[0]) {
-                        d[0] = s;
-                        if (ws) {
-                            size_t off = ws_d.off(mb, oc, od, oh, ow);
-                            if (ws_dt == data_type::u8) {
-                                ws[off] = kd*KH*KW + kh*KW + kw;
-                            } else {
-                                assert(ws_dt == data_type::s32);
-                                ((int *)ws)[off] = kd*KH*KW + kh*KW + kw;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    };
-
-    auto ker_avg = [=](data_t *d, int mb, int oc, int od, int oh, int ow) {
-        auto id_start = apply_offset(od*SD, padD1);
-        auto ih_start = apply_offset(oh*SH, padT);
-        auto iw_start = apply_offset(ow*SW, padL);
-        auto id_end = nstl::min(od*SD - padD1 + KD, ID);
-        auto ih_end = nstl::min(oh*SH - padT + KH, IH);
-        auto iw_end = nstl::min(ow*SW - padL + KW, IW);
-
-        auto num_summands = (alg == pooling_avg_include_padding) ? KD*KW*KH
-            : (id_end - id_start)*(ih_end - ih_start)*(iw_end - iw_start);
-
-        acc_data_t dst = 0;
-        for (int id = id_start; id < id_end; ++id) {
-            for (int ih = ih_start; ih < ih_end; ++ih) {
-                for (int iw = iw_start; iw < iw_end; ++iw) {
-                    dst += src[src_d.off(mb, oc, id, ih, iw)];
-                }
-            }
-        }
-
-        d[0] = math::out_round<data_t>((float)dst / num_summands);
-    };
-
     const int MB = conf_.MB();
     const int OC = conf_.C();
     const int OD = conf_.OD();
     const int OH = conf_.OH();
     const int OW = conf_.OW();
+
+    const int IH = conf_.IH();
+    const int IW = conf_.IW();
+    const int ID = conf_.ID();
+
+    const int KH = conf_.KH();
+    const int KW = conf_.KW();
+    const int KD = conf_.KD();
+
+    const int SH = conf_.KSH();
+    const int SW = conf_.KSW();
+    const int SD = conf_.KSD();
 
     if (alg == pooling_max) {
 #       pragma omp parallel for collapse(5) schedule(static)
@@ -132,7 +90,30 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
                             if (ws) {
                                 ws[ws_d.off(mb, oc, od, oh, ow)] = 0;
                             }
-                            ker_max(d, mb, oc, od, oh, ow);
+                            // ker_max(d, mb, oc, od, oh, ow);
+                            for (int kd = 0; kd < KD; ++kd) {
+                                for (int kh = 0; kh < KH; ++kh) {
+                                    for (int kw = 0; kw < KW; ++kw) {
+                                        const int id = od * SD + kd;
+                                        const int ih = oh * SH + kh;
+                                        const int iw = ow * SW + kw;
+
+                                        auto s = src[src_d.off(mb, oc, id, ih, iw)];
+                                        if (s > d[0]) {
+                                            d[0] = s;
+                                            if (ws) {
+                                                size_t off = ws_d.off(mb, oc, od, oh, ow);
+                                                if (ws_dt == data_type::u8) {
+                                                    ws[off] = kd*KH*KW + kh*KW + kw;
+                                                } else {
+                                                    assert(ws_dt == data_type::s32);
+                                                    ((int *)ws)[off] = kd*KH*KW + kh*KW + kw;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -147,7 +128,27 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
                         for (int ow = 0; ow < OW; ++ow) {
                             data_t *d = &dst[dst_d.off(mb, oc, od, oh, ow)];
                             d[0] = 0;
-                            ker_avg(d, mb, oc, od, oh, ow);
+                            //ker_avg(d, mb, oc, od, oh, ow);
+                            auto id_start = od*SD;
+                            auto ih_start = oh*SH;
+                            auto iw_start = ow*SW;
+                            auto id_end = nstl::min(od*SD + KD, ID);
+                            auto ih_end = nstl::min(oh*SH + KH, IH);
+                            auto iw_end = nstl::min(ow*SW + KW, IW);
+
+                            auto num_summands = (alg == pooling_avg_include_padding) ? KD*KW*KH
+                                : (id_end - id_start)*(ih_end - ih_start)*(iw_end - iw_start);
+
+                            acc_data_t dst = 0;
+                            for (int id = id_start; id < id_end; ++id) {
+                                for (int ih = ih_start; ih < ih_end; ++ih) {
+                                    for (int iw = iw_start; iw < iw_end; ++iw) {
+                                        dst += src[src_d.off(mb, oc, id, ih, iw)];
+                                    }
+                                }
+                            }
+
+                            d[0] = math::out_round<data_t>((float)dst / num_summands);
                         }
                     }
                 }

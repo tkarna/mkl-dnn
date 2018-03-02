@@ -54,6 +54,7 @@ struct avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
                         dst_pd()->desc()->data_type)
                 && desc()->accum_data_type == acc_type
                 && this->desc()->pool_kind == pool_kind::pool3D
+                && this->desc()->diff_src_desc.dims[1] % 16 == 0
                 && attr()->has_default_values();
             if (!ok) return status::unimplemented;
 
@@ -137,6 +138,7 @@ struct avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
                       && hint_fwd_pd_->workspace_pd()->engine()->kind()
                                 == engine_kind::cpu)
                 && this->desc()->pool_kind == pool_kind::pool3D
+                && this->desc()->diff_src_desc.dims[1] % 16 == 0
                 && attr()->has_default_values();
             if (!ok) return status::unimplemented;
 
