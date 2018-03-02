@@ -545,17 +545,6 @@ int main(int argc, char **argv) {
     try {
         test_pool_simple_3d("both", pooling_avg, 4);
 
-        // cosmoflow layers
-        //                         input size      ch  kernel     stride     padding   batch
-        success = success && test_pool_3d("both", pooling_avg, {126, 126, 126}, 16, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
-        success = success && test_pool_3d("both", pooling_avg, { 60,  60,  60}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
-
-        // medical imaging layers
-        success = success && test_pool_3d("fwd", pooling_max, {334, 300, 396}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
-        success = success && test_pool_3d("fwd", pooling_max, {163, 146, 194}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
-        success = success && test_pool_3d("both", pooling_avg, { 79,  69,  93}, 32, {2, 3, 3}, {1, 1, 1}, {0, 0, 0}, 1, false);
-        success = success && test_pool_3d("both", pooling_avg, { 79,  69,  93}, 32, {2, 3, 3}, {1, 1, 1}, {0, 0, 0}, 1, true);
-
         // 32, 64 cubes (additional -- not in the applications)
         std::vector<int> in_sizes = {32, 64};
         std::vector<int> kernel_sizes = {2, 3};
@@ -567,6 +556,18 @@ int main(int argc, char **argv) {
                 success = success && test_pool_3d("both", pooling_avg, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, true);
             }
         }
+
+        // cosmoflow layers
+        //                         input size      ch  kernel     stride     padding   batch
+        success = success && test_pool_3d("both", pooling_avg, {126, 126, 126}, 16, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
+        success = success && test_pool_3d("both", pooling_avg, { 60,  60,  60}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
+
+        // medical imaging layers
+        // success = success && test_pool_3d("fwd", pooling_max, {334, 300, 396}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
+        // success = success && test_pool_3d("fwd", pooling_max, {163, 146, 194}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
+        success = success && test_pool_3d("both", pooling_avg, { 79,  69,  93}, 32, {2, 3, 3}, {1, 1, 1}, {0, 0, 0}, 1, false);
+        success = success && test_pool_3d("both", pooling_avg, { 79,  69,  93}, 32, {2, 3, 3}, {1, 1, 1}, {0, 0, 0}, 1, true);
+
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
         } else {
