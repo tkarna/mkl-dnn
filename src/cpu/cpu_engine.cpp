@@ -167,6 +167,7 @@ static const pd_create_f cpu_impl_list[] = {
     INSTANCE(ref_softmax_fwd_t<f32>),
     /* pool */
     INSTANCE(avx512_common_pooling3D_fwd_t<f32>),
+    INSTANCE(avx512_common_pooling3D_bwd_t<f32>),
     INSTANCE(jit_uni_pooling_fwd_t<avx512_common>),
     INSTANCE(jit_uni_pooling_bwd_t<avx512_common>),
     INSTANCE(jit_uni_pooling_fwd_t<avx2>),
