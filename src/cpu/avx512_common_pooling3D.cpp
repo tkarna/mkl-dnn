@@ -22,6 +22,8 @@
 #include "math_utils.hpp"
 #include "nstl.hpp"
 
+#include <limits>
+
 #include "avx512_common_pooling3D.hpp"
 
 class MultiviewOffset {
@@ -39,6 +41,171 @@ public:
         return (((i0*dims[1] + i1)*dims[2] + i2)*dims[3] + i3)*dims[4] + i4;
     };
 };
+
+static std::vector<uint32_t> get_factors(uint32_t num)
+{
+    std::vector<uint32_t> res;
+    while(num > 1)
+    {
+        if((num % 2) == 0)
+        {
+            num /= 2;
+            res.push_back(2);
+        }
+        else
+        {
+            const uint32_t limit = std::sqrt(num);
+            bool divisor = false;
+            for(uint32_t i = 3; i <= limit; i+=2)
+            {
+                if((num % i) == 0)
+                {
+                    num /= i;
+                    res.push_back(i);
+                    divisor = true;
+                    break;
+                }
+            }
+            if(!divisor)
+            {
+                res.push_back(num);
+                num = 1;
+            }
+        }
+    }
+    return res;
+}
+
+// Compute products of a subset in log space
+static double nth_subset_sum(uint64_t num, const std::vector<double> *set)
+{
+    double res = 0.0;
+    for(uint32_t i = 0; i < set->size(); ++i)
+    {
+        if(num & (1ULL << i))
+        {
+            res += (*set)[i];
+        }
+    }
+    return res;
+}
+
+// Compute products of a subset in 'normal' space.
+static uint32_t nth_subset_prod(uint64_t num, const std::vector<uint32_t> *set)
+{
+    uint32_t res = 1;
+    for(uint32_t i = 0; i < set->size(); ++i)
+    {
+        if(num & (1ULL << i))
+        {
+            res *= (*set)[i];
+        }
+    }
+    return res;
+}
+
+static uint64_t log_best_subset(const double split, const std::vector<double> *ln_factors)
+{
+    double best = std::numeric_limits<double>::max();
+    uint64_t argbest = -1;
+    for( int i = 1; i < (1 << ln_factors->size()); ++i)
+    {
+        const double prod = std::abs(nth_subset_sum(i, ln_factors) - split);
+        if(prod < best)
+        {
+            best = prod;
+            argbest = i;
+        }
+    }
+    return argbest;
+}
+
+static double log_weight0(uint32_t N, const uint32_t *weights, double scale)
+{
+    double res = std::log(scale);
+    for(uint32_t j = 1; j < N; ++j)
+    {
+        res -= std::log(weights[j]);
+    }
+    res += (N-1)*std::log(weights[0]);
+    res /= N;
+    return res;
+}
+
+// Discard items in set & compact list
+template <typename T>
+static void compress_set(uint64_t num, std::vector<T> *set)
+{
+    uint32_t fillp = 0;
+    for(uint32_t i = 0; i < set->size(); ++i)
+    {
+        if(num & (1ULL << i))
+        {
+            (*set)[fillp] = (*set)[i];
+            ++fillp;
+        }
+    }
+}
+
+std::vector<uint32_t> best_decomp(uint32_t num, const std::vector<uint32_t> &weights)
+{
+    std::vector<uint32_t> factors = get_factors(num);
+    assert(factors.size() < 64);
+
+    std::vector<double> ln_factors(factors.size());
+    for(uint32_t j = 0; j < ln_factors.size(); ++j)
+    {
+        ln_factors[j] = std::log(factors[j]);
+    }
+
+    const uint32_t groups = weights.size();
+    std::vector<uint32_t> res(groups);
+
+    uint32_t todiv = num;
+    for(uint32_t i = 0; i < groups-1; ++i)
+    {
+        const double split = log_weight0(groups-i, &(weights[i]), todiv);
+
+        // Splits very close to zero should result in a factor of 1 being used.
+        if(split <= 1e-6)
+        {
+            res[i] = 1;
+            continue;
+        }
+
+        const uint64_t set_idx = log_best_subset(split, &ln_factors);
+        res[i] = nth_subset_prod(set_idx, &factors);
+        // Discard factors that we have used.
+        compress_set(set_idx, &factors);
+        compress_set(set_idx, &ln_factors);
+        todiv /= res[i];
+    }
+    // Since we need a total partition, the last multiplicand is already found.
+    res[groups-1] = todiv;
+    return res;
+}
+
+static void divvy(int *start, int *end, const int nitems, int chunkno, int nchunks) {
+    const int items_per_chunk = nitems / nchunks;
+    const int remainder       = nitems - nchunks * items_per_chunk;
+
+    *start = chunkno * items_per_chunk + std::min(chunkno, remainder);
+    *end   = (chunkno + 1) * items_per_chunk + std::min(chunkno + 1, remainder);
+}
+
+void multi_decomp(int *start_ends, int rank, int nranks, int ndims, int *dims, uint32_t *decomp)
+{
+    int eff_rank = rank;
+    int eff_nranks = nranks;
+
+    for(int d = 0; d < ndims; ++d)
+    {
+        divvy(start_ends + 2*d + 0, start_ends + 2*d + 1, dims[d], decomp[d] * eff_rank / eff_nranks, decomp[d]);
+        eff_nranks /= decomp[d];
+        eff_rank = eff_rank % eff_nranks;
+    }
+
+}
 
 namespace mkldnn {
 namespace impl {
@@ -132,25 +299,30 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
         const int iwstride = NBLOCK;
 
         const float denom = 1.0f/(KD*KW*KH);
-        // const int nthreads = omp_get_max_threads();
+        const int nthreads = omp_get_max_threads();
+
+        std::vector<uint32_t> decomp(best_decomp(nthreads, std::vector<uint32_t>(3,1)));
+        while(decomp.size() < 5) {
+            decomp.insert(decomp.begin(), 1);
+        }
+        // printf("Decomp: ");
+        // for(auto v : decomp) {
+        //     printf("%d ", v);
+        // }
+        // printf("\n");
 
         #pragma omp parallel
         {
-            // const int tid = omp_get_thread_num();
-            // int start_ends[2*5];
-            // multi_decomp(start_ends, tid, nthreads, 5, &outv.dim[0], &decomp[0]);
+            const int tid = omp_get_thread_num();
+            int start_ends[2*5];
+            std::vector<int> dims = {MB, OCB, OD, OH, OW};
+            multi_decomp(start_ends, tid, nthreads, 5, &dims[0], &decomp[0]);
 
-//             for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
-//                 for (int oc = start_ends[2*1+0]; oc < start_ends[2*1+1]; ++oc) {
-//                     for (int od = start_ends[2*2+0]; od < start_ends[2*2+1]; ++od) {
-//                         for (int oh = start_ends[2*3+0]; oh < start_ends[2*3+1]; ++oh) {
-//                             for (int ow = start_ends[2*4+0]; ow < start_ends[2*4+1]; ++ow) {
-#           pragma for collapse(5)
-            for (int mb = 0; mb < MB; ++mb) {
-                for (int ocb = 0; ocb < OCB; ++ocb) {
-                    for (int od = 0; od < OD; ++od) {
-                        for (int oh = 0; oh < OH; ++oh) {
-                            for (int ow = 0; ow < OW; ++ow) {
+            for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
+                for (int ocb = start_ends[2*1+0]; ocb < start_ends[2*1+1]; ++ocb) {
+                    for (int od = start_ends[2*2+0]; od < start_ends[2*2+1]; ++od) {
+                        for (int oh = start_ends[2*3+0]; oh < start_ends[2*3+1]; ++oh) {
+                            for (int ow = start_ends[2*4+0]; ow < start_ends[2*4+1]; ++ow) {
                                 data_t *dst_vec = (data_t *)&dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
                                 data_t *src_vec = (data_t *)&src[src_ix.off(mb, ocb, od*SD, oh*SH, ow*SW)*NBLOCK];
 
