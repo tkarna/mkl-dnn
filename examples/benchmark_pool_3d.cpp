@@ -57,9 +57,19 @@ void compute_pool(std::string direction,
     auto src_md = src_pd.desc();
     auto dst_md = dst_pd.desc();
 
+    memory::dims src_dims = {src_md.data.dims[0], src_md.data.dims[1],
+        src_md.data.dims[2], src_md.data.dims[3], src_md.data.dims[4]};
+    memory::dims dst_dims = {dst_md.data.dims[0], dst_md.data.dims[1],
+        dst_md.data.dims[2], dst_md.data.dims[3], dst_md.data.dims[4]};
+
+    auto src_any_md = memory::desc(src_dims, memory::data_type::f32,
+                                   memory::format::any);
+    auto dst_any_md = memory::desc(dst_dims, memory::data_type::f32,
+                                   memory::format::any);
+
     /* op descriptors */
     auto pool_fwd_desc = pooling_forward::desc(prop_kind::forward,
-        pooling_alg, src_md, dst_md, strides, kernel, padding, padding,
+        pooling_alg, src_any_md, dst_any_md, strides, kernel, padding, padding,
                                                padding_kind::zero);
 
     /* primitive op descriptors */
@@ -72,41 +82,35 @@ void compute_pool(std::string direction,
     auto ws_pd = with_workspace ? pool_fwd_pd.workspace_primitive_desc() : dst_mem.get_primitive_desc();
     auto ws_mem = with_workspace ? memory(ws_pd) : dst_mem;
 
+    auto dst_fmt = dst_md.data.format;
+    auto op_fwd_dst_fmt = pool_fwd_pd.dst_primitive_desc().desc().data.format;
+    bool dst_needs_reorder = op_fwd_dst_fmt != dst_fmt;
+
+    auto src_fmt = src_md.data.format;
+    // NOTE we cannot ask for the src format... assume the same as dst
+    auto op_fwd_src_fmt = op_fwd_dst_fmt;
+    bool src_needs_reorder = op_fwd_src_fmt != src_fmt;
+
+    auto reorder_src_mem = src_mem;
+    if (src_needs_reorder) {
+        // NOTE assuming src fmt == dst fmt
+        reorder_src_mem = memory({{{src_dims}, memory::data_type::f32, (memory::format)op_fwd_src_fmt}, cpu_engine});
+    }
+    auto reorder_dst_mem = dst_mem;
+    if (dst_needs_reorder) {
+        reorder_dst_mem = memory(pool_fwd_pd.dst_primitive_desc());
+    }
+
     /* create forward op primitive */
     auto pool_fwd_op = with_workspace ?
-       pooling_forward(pool_fwd_pd, src_mem, dst_mem, ws_mem) :
-       pooling_forward(pool_fwd_pd, src_mem, dst_mem);
+       pooling_forward(pool_fwd_pd, reorder_src_mem, reorder_dst_mem, ws_mem) :
+       pooling_forward(pool_fwd_pd, reorder_src_mem, reorder_dst_mem);
 
-    std::vector<primitive> operators;
-    operators.push_back(pool_fwd_op);
-
-    if (direction == "both") {
-        auto diff_dst_pd = diff_dst_mem.get_primitive_desc();
-        auto diff_src_pd = diff_src_mem.get_primitive_desc();
-
-        auto diff_dst_md = diff_dst_pd.desc();
-        auto diff_src_md = diff_src_pd.desc();
-
-        /* op descriptors */
-        auto pool_bwd_desc = pooling_backward::desc(pooling_alg,
-            diff_src_md, diff_dst_md, strides, kernel, padding, padding,
-            padding_kind::zero);
-
-        /* primitive op descriptors */
-        auto pool_bwd_pd = pooling_backward::primitive_desc(pool_bwd_desc,
-                                                            cpu_engine,
-                                                            pool_fwd_pd);
-
-        /* create forward op primitive */
-        auto pool_bwd_op = pooling_backward(pool_bwd_pd, diff_dst_mem, diff_src_mem);
-        operators.push_back(pool_bwd_op);
-    }
+    // TODO push reorder ops in the net
 
     // create network array
     std::vector<primitive> net;
 
-    auto src_dims = src_md.data.dims;
-    auto dst_dims = dst_md.data.dims;
     int batch_size = src_dims[0];
     std::string alg_str = pooling_alg == pooling_avg ? "avg" : "max";
     printf("Alg:%s Input %dx%dx%d kernel %dx%dx%d channels=%d bs=%d\n",
@@ -124,8 +128,9 @@ void compute_pool(std::string direction,
 
     while(elapsed < ntime_target) {
 
+        // NOTE reorders have not been created/called so result will be wrong
         for (int it = 0; it < nruns; it++) {
-            net.push_back(operators[0]);
+            net.push_back(pool_fwd_op);
         }
 
         // Execute
@@ -159,50 +164,91 @@ void compute_pool(std::string direction,
            dst_dims[1], batch_size,
            complexity, elapsed, nruns,elapsed/nruns,complexity/1000./1000./(elapsed/nruns)*1000.*batch_size);
 
-    if (direction == "both") {
-        const double ntime_target = 1.0e3; // Time in ms
-        int nruns = 2;
-        const int max_nruns = 1e9;
-        const double overshoot = 1.2;
-        double elapsed = 0.0;
+    if (direction != "both")
+        return;
 
-        while(elapsed < ntime_target) {
+    auto diff_dst_pd = diff_dst_mem.get_primitive_desc();
+    auto diff_src_pd = diff_src_mem.get_primitive_desc();
 
-            for (int it = 0; it < nruns; it++) {
-                net.push_back(operators[1]);
-            }
+    auto diff_dst_md = diff_dst_pd.desc();
+    auto diff_src_md = diff_src_pd.desc();
 
-            // Execute
-            auto t1 = Clock::now();
-            stream(stream::kind::eager).submit(net).wait();
-            auto t2 = Clock::now();
+    auto diff_src_any_md = memory::desc(src_dims, memory::data_type::f32, memory::format::any);
+    auto diff_dst_any_md = memory::desc(dst_dims, memory::data_type::f32, memory::format::any);
 
-            elapsed = (double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-            if(elapsed < ntime_target)
-            {
-                std::cout << " [took " << elapsed << " discarding....]" << std::endl;
-                nruns = std::min(std::max((double)nruns+1.0, nruns*overshoot*ntime_target/elapsed), (double)max_nruns);
-            }
+    /* op descriptors */
+    auto pool_bwd_desc = pooling_backward::desc(pooling_alg,
+        diff_src_any_md, diff_dst_any_md, strides, kernel, padding, padding,
+        padding_kind::zero);
+
+    /* primitive op descriptors */
+    auto pool_bwd_pd = pooling_backward::primitive_desc(pool_bwd_desc,
+                                                        cpu_engine,
+                                                        pool_fwd_pd);
+
+    auto diff_src_fmt = diff_src_md.data.format;
+    auto op_bwd_diff_src_fmt = pool_bwd_pd.diff_src_primitive_desc().desc().data.format;
+    bool diff_src_needs_reorder = op_bwd_diff_src_fmt != diff_src_fmt;
+
+    auto diff_dst_fmt = diff_dst_md.data.format;
+    // NOTE we cannot ask for the dst format... assume the same as src
+    auto op_bwd_diff_dst_fmt = op_bwd_diff_src_fmt;
+    bool diff_dst_needs_reorder = op_bwd_diff_dst_fmt != diff_dst_fmt;
+
+    auto reorder_diff_src_mem = diff_src_mem;
+    if (diff_src_needs_reorder) {
+        reorder_diff_src_mem = memory(pool_bwd_pd.diff_src_primitive_desc());
+    }
+
+    auto reorder_diff_dst_mem = diff_dst_mem;
+    if (diff_dst_needs_reorder) {
+        // NOTE assuming src fmt == dst fmt
+        reorder_diff_dst_mem = memory({{{dst_dims}, memory::data_type::f32, (memory::format)op_bwd_diff_dst_fmt}, cpu_engine});
+    }
+
+    /* create forward op primitive */
+    auto pool_bwd_op = pooling_backward(pool_bwd_pd, reorder_diff_dst_mem, reorder_diff_src_mem);
+
+    nruns = 2;
+    elapsed = 0.0;
+
+    while(elapsed < ntime_target) {
+
+        // NOTE reorders have not been created/called so result will be wrong
+        for (int it = 0; it < nruns; it++) {
+            net.push_back(pool_bwd_op);
         }
 
-        // backward complexity
-        float complexity = ((float)dst_dims[2])*dst_dims[3]*dst_dims[4]*kernel[0]*kernel[1]*kernel[2]*dst_dims[1];
-        auto speed = complexity/1000./1000./1000./(elapsed/nruns)*1000.*batch_size;
-        std::cout << "Total flops: " << complexity << std::endl;
+        // Execute
+        auto t1 = Clock::now();
+        stream(stream::kind::eager).submit(net).wait();
+        auto t2 = Clock::now();
 
-        std::cout << "Total elapsed: " << elapsed << " ms" << std::endl;
-        std::cout << "#iter: " << nruns << std::endl;
-        std::cout << "Avg duration: " << elapsed/nruns << " ms" << std::endl;
-        std::cout << "GFlops/s: " << speed << std::endl;
-
-        printf("CSV,bwd,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%le,%le,%d,%le,%le\n",
-            alg_str.c_str(),
-            src_dims[2], src_dims[3], src_dims[4],
-            kernel[0], kernel[1], kernel[2],
-            strides[0], strides[1], strides[2],
-            dst_dims[1], batch_size,
-            complexity, elapsed, nruns,elapsed/nruns,speed);
+        elapsed = (double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+        if(elapsed < ntime_target)
+        {
+            std::cout << " [took " << elapsed << " discarding....]" << std::endl;
+            nruns = std::min(std::max((double)nruns+1.0, nruns*overshoot*ntime_target/elapsed), (double)max_nruns);
+        }
     }
+
+    // backward complexity
+    complexity = ((float)dst_dims[2])*dst_dims[3]*dst_dims[4]*kernel[0]*kernel[1]*kernel[2]*dst_dims[1];
+    speed = complexity/1000./1000./1000./(elapsed/nruns)*1000.*batch_size;
+    std::cout << "Total flops: " << complexity << std::endl;
+
+    std::cout << "Total elapsed: " << elapsed << " ms" << std::endl;
+    std::cout << "#iter: " << nruns << std::endl;
+    std::cout << "Avg duration: " << elapsed/nruns << " ms" << std::endl;
+    std::cout << "GFlops/s: " << speed << std::endl;
+
+    printf("CSV,bwd,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%le,%le,%d,%le,%le\n",
+        alg_str.c_str(),
+        src_dims[2], src_dims[3], src_dims[4],
+        kernel[0], kernel[1], kernel[2],
+        strides[0], strides[1], strides[2],
+        dst_dims[1], batch_size,
+        complexity, elapsed, nruns,elapsed/nruns,speed);
 }
 
 
