@@ -336,9 +336,19 @@ void compute_pool(std::string direction,
     auto src_md = src_pd.desc();
     auto dst_md = dst_pd.desc();
 
+    memory::dims src_dims = {src_md.data.dims[0], src_md.data.dims[1],
+        src_md.data.dims[2], src_md.data.dims[3], src_md.data.dims[4]};
+    memory::dims dst_dims = {dst_md.data.dims[0], dst_md.data.dims[1],
+        dst_md.data.dims[2], dst_md.data.dims[3], dst_md.data.dims[4]};
+
+    auto src_any_md = memory::desc(src_dims, memory::data_type::f32,
+                                   memory::format::any);
+    auto dst_any_md = memory::desc(dst_dims, memory::data_type::f32,
+                                   memory::format::any);
+
     /* op descriptors */
     auto pool_fwd_desc = pooling_forward::desc(prop_kind::forward,
-        pooling_alg, src_md, dst_md, strides, kernel, padding, padding,
+        pooling_alg, src_any_md, dst_any_md, strides, kernel, padding, padding,
                                                padding_kind::zero);
 
     /* primitive op descriptors */
@@ -351,37 +361,111 @@ void compute_pool(std::string direction,
     auto ws_pd = with_workspace ? pool_fwd_pd.workspace_primitive_desc() : dst_mem.get_primitive_desc();
     auto ws_mem = with_workspace ? memory(ws_pd) : dst_mem;
 
+    auto dst_fmt = dst_md.data.format;
+    auto op_fwd_dst_fmt = pool_fwd_pd.dst_primitive_desc().desc().data.format;
+    bool dst_needs_reorder = op_fwd_dst_fmt != dst_fmt;
+    printf("dst format %d\n", dst_fmt);
+    printf("op dst format %d\n", op_fwd_dst_fmt);
+    printf("dst_needs_reorder %d\n", dst_needs_reorder);
+
+    auto src_fmt = src_md.data.format;
+    // NOTE we cannot ask for the src format... assume the same as dst
+    auto op_fwd_src_fmt = op_fwd_dst_fmt;
+    bool src_needs_reorder = op_fwd_src_fmt != src_fmt;
+    printf("src format %d\n", src_fmt);
+    printf("op src format %d\n", op_fwd_src_fmt);
+    printf("src_needs_reorder %d\n", src_needs_reorder);
+
+    auto reorder_src_mem = src_mem;
+    if (src_needs_reorder) {
+        // NOTE assuming src fmt == dst fmt
+        reorder_src_mem = memory({{{src_dims}, memory::data_type::f32, (memory::format)op_fwd_src_fmt}, cpu_engine});
+    }
+    auto reorder_dst_mem = dst_mem;
+    if (dst_needs_reorder) {
+        reorder_dst_mem = memory(pool_fwd_pd.dst_primitive_desc());
+    }
+
     /* create forward op primitive */
     auto pool_fwd_op = with_workspace ?
-       pooling_forward(pool_fwd_pd, src_mem, dst_mem, ws_mem) :
-       pooling_forward(pool_fwd_pd, src_mem, dst_mem);
+       pooling_forward(pool_fwd_pd, reorder_src_mem, reorder_dst_mem, ws_mem) :
+       pooling_forward(pool_fwd_pd, reorder_src_mem, reorder_dst_mem);
 
     // create network array
     std::vector<primitive> net;
 
+    if (src_needs_reorder) {
+        net.push_back(reorder(src_mem, reorder_src_mem));
+    }
+
     net.push_back(pool_fwd_op);
 
-    if (direction == "both") {
-        auto diff_dst_pd = diff_dst_mem.get_primitive_desc();
-        auto diff_src_pd = diff_src_mem.get_primitive_desc();
+    if (dst_needs_reorder) {
+        net.push_back(reorder(reorder_dst_mem, dst_mem));
+    }
 
-        auto diff_dst_md = diff_dst_pd.desc();
-        auto diff_src_md = diff_src_pd.desc();
+    if (direction != "both") {
+        // Execute
+        stream(stream::kind::eager).submit(net).wait();
+        return;
+    }
 
-        /* op descriptors */
-        auto pool_bkw_desc = pooling_backward::desc(pooling_alg,
-            diff_src_md, diff_dst_md, strides, kernel, padding, padding,
-            padding_kind::zero);
+    auto diff_dst_pd = diff_dst_mem.get_primitive_desc();
+    auto diff_src_pd = diff_src_mem.get_primitive_desc();
 
-        /* primitive op descriptors */
-        auto pool_bkw_pd = pooling_backward::primitive_desc(pool_bkw_desc,
-                                                            cpu_engine,
-                                                            pool_fwd_pd);
+    auto diff_dst_md = diff_dst_pd.desc();
+    auto diff_src_md = diff_src_pd.desc();
 
-        /* create forward op primitive */
-        auto pool_bkw_op = pooling_backward(pool_bkw_pd, diff_dst_mem, diff_src_mem);
+    auto diff_src_any_md = memory::desc(src_dims, memory::data_type::f32, memory::format::any);
+    auto diff_dst_any_md = memory::desc(dst_dims, memory::data_type::f32, memory::format::any);
 
-        net.push_back(pool_bkw_op);
+    /* op descriptors */
+    auto pool_bwd_desc = pooling_backward::desc(pooling_alg,
+        diff_src_any_md, diff_dst_any_md, strides, kernel, padding, padding,
+        padding_kind::zero);
+
+    /* primitive op descriptors */
+    auto pool_bwd_pd = pooling_backward::primitive_desc(pool_bwd_desc,
+                                                        cpu_engine,
+                                                        pool_fwd_pd);
+
+    auto diff_src_fmt = diff_src_md.data.format;
+    auto op_bwd_diff_src_fmt = pool_bwd_pd.diff_src_primitive_desc().desc().data.format;
+    bool diff_src_needs_reorder = op_bwd_diff_src_fmt != diff_src_fmt;
+    printf("diff_src format %d\n", diff_src_fmt);
+    printf("op diff_src format %d\n", op_bwd_diff_src_fmt);
+    printf("diff_src_needs_reorder %d\n", diff_src_needs_reorder);
+
+    auto diff_dst_fmt = diff_dst_md.data.format;
+    // NOTE we cannot ask for the dst format... assume the same as src
+    auto op_bwd_diff_dst_fmt = op_bwd_diff_src_fmt;
+    bool diff_dst_needs_reorder = op_bwd_diff_dst_fmt != diff_dst_fmt;
+    printf("diff_dst format %d\n", diff_dst_fmt);
+    printf("op diff_dst format %d\n", op_bwd_diff_dst_fmt);
+    printf("diff_dst_needs_reorder %d\n", diff_dst_needs_reorder);
+
+    auto reorder_diff_src_mem = diff_src_mem;
+    if (diff_src_needs_reorder) {
+        reorder_diff_src_mem = memory(pool_bwd_pd.diff_src_primitive_desc());
+    }
+
+    auto reorder_diff_dst_mem = diff_dst_mem;
+    if (diff_dst_needs_reorder) {
+        // NOTE assuming src fmt == dst fmt
+        reorder_diff_dst_mem = memory({{{dst_dims}, memory::data_type::f32, (memory::format)op_bwd_diff_dst_fmt}, cpu_engine});
+    }
+
+    /* create forward op primitive */
+    auto pool_bwd_op = pooling_backward(pool_bwd_pd, reorder_diff_dst_mem, reorder_diff_src_mem);
+
+    if (diff_dst_needs_reorder) {
+        net.push_back(reorder(diff_dst_mem, reorder_diff_dst_mem));
+    }
+
+    net.push_back(pool_bwd_op);
+
+    if (diff_src_needs_reorder) {
+        net.push_back(reorder(reorder_diff_src_mem, diff_src_mem));
     }
 
     // Execute
@@ -543,7 +627,7 @@ bool test_pool_3d(std::string direction, algorithm pooling_alg,
 int main(int argc, char **argv) {
     bool success = true;
     try {
-        test_pool_simple_3d("both", pooling_avg, 4);
+        success = success && test_pool_simple_3d("both", pooling_avg, 4);
 
         // 32, 64 cubes (additional -- not in the applications)
         std::vector<int> in_sizes = {32, 64};
