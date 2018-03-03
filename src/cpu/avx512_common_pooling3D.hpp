@@ -55,7 +55,23 @@ struct avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
                 && desc()->accum_data_type == acc_type
                 && this->desc()->pool_kind == pool_kind::pool3D
                 && this->desc()->diff_src_desc.dims[1] % 16 == 0
+                && utils::one_of(desc_.src_desc.format, memory_format::nCdhw16c, memory_format::any)
+                && utils::one_of(desc_.dst_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && attr()->has_default_values();
+            printf("fwd avx512 %d %d %d %d %d %d %d -> %d\n",
+                set_default_params() == status::success,
+                utils::one_of(desc()->prop_kind, forward_training,
+                        forward_inference),
+                utils::one_of(desc()->alg_kind, pooling_max,
+                        pooling_avg_include_padding,
+                        pooling_avg_exclude_padding),
+                utils::everyone_is(data_type, src_pd()->desc()->data_type,
+                        dst_pd()->desc()->data_type),
+                desc()->accum_data_type == acc_type,
+                this->desc()->pool_kind == pool_kind::pool3D,
+                attr()->has_default_values(),
+                ok
+            );
             if (!ok) return status::unimplemented;
 
             bool is_training = desc_.prop_kind == forward_training;
@@ -92,6 +108,17 @@ struct avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
         inline int padB() const { return desc_.padding[1][1]; }
         inline int padL() const { return desc_.padding[0][2]; }
         inline int padR() const { return desc_.padding[1][2]; }
+
+    protected:
+        virtual status_t set_default_params() override {
+            using namespace memory_format;
+            if (this->src_pd_.desc()->format == any)
+                CHECK(this->src_pd_.set_format(nCdhw16c));
+            if (this->dst_pd_.desc()->format == any)
+                CHECK(this->dst_pd_.set_format(nCdhw16c));
+            return status::success;
+        }
+
     };
 
     avx512_common_pooling3D_fwd_t(const pd_t *pd, const input_vector &inputs,
@@ -139,6 +166,8 @@ struct avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
                                 == engine_kind::cpu)
                 && this->desc()->pool_kind == pool_kind::pool3D
                 && this->desc()->diff_src_desc.dims[1] % 16 == 0
+                && utils::one_of(desc_.diff_src_desc.format, memory_format::nCdhw16c, memory_format::any)
+                && utils::one_of(desc_.diff_dst_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && attr()->has_default_values();
             if (!ok) return status::unimplemented;
 
@@ -173,6 +202,17 @@ struct avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
         inline int padB() const { return desc_.padding[1][1]; }
         inline int padL() const { return desc_.padding[0][2]; }
         inline int padR() const { return desc_.padding[1][2]; }
+
+    protected:
+        virtual status_t set_default_params() {
+            using namespace memory_format;
+            if (diff_dst_pd_.desc()->format == any)
+                CHECK(diff_dst_pd_.set_format(nCdhw16c));
+            if (diff_src_pd_.desc()->format == any)
+                CHECK(diff_src_pd_.set_format(nCdhw16c));
+            return status::success;
+        }
+
     };
 
     avx512_common_pooling3D_bwd_t(const pd_t *pd, const input_vector &inputs,
