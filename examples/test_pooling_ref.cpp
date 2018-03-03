@@ -548,9 +548,12 @@ bool assert_pooling_3d(std::string direction, algorithm pooling_alg,
 
     auto alg_str = pooling_alg == pooling_max ? "max" : "avg";
     auto float_str = fill_with_floats ? "float" : "int";
-    printf("%dx%dx%d k=%dx%dx%d %s ch=%d bs=%d (%s)\n",
+    printf("%dx%dx%d %dx%dx%d k=%dx%dx%d s=%dx%dx%d %s ch=%d bs=%d (%s)\n",
            in_height, in_width, in_depth,
-           ker_height, ker_width, ker_depth, alg_str,
+           out_height, out_width, out_depth,
+           ker_height, ker_width, ker_depth,
+           stride_height, stride_width, stride_depth,
+           alg_str,
            channels, nbatch, float_str
           );
 
@@ -618,6 +621,10 @@ bool test_pool_3d(std::string direction, algorithm pooling_alg,
     const int sh=strides[0], sw=strides[1], sd=strides[2];
     const int ph=padding[0], pw=padding[1], pd=padding[2];
     const int oh=(ih-kh+2*ph)/sh+1, ow=(iw-kw+2*pw)/sw+1, od=(id-kd+2*pd)/sd+1;
+    if (!fill_with_floats && pooling_alg == pooling_avg) {
+        std::cout << "Testing integers is only possible with max pooling" << std::endl;
+        exit(-1);
+    }
     float tol = fill_with_floats ? 1e-5 : 1e-25;
     return assert_pooling_3d(direction, pooling_alg, bs, channels, ih, iw, id,
                     kh, kw, kd, oh, ow, od,
@@ -636,7 +643,6 @@ int main(int argc, char **argv) {
             for(std::vector<int>::iterator k = kernel_sizes.begin(); k != kernel_sizes.end(); ++k) {
                 success = success && test_pool_3d("fwd", pooling_max, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, false);
                 success = success && test_pool_3d("fwd", pooling_max, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, true);
-                success = success && test_pool_3d("both", pooling_avg, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, false);
                 success = success && test_pool_3d("both", pooling_avg, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, true);
             }
         }
@@ -649,8 +655,7 @@ int main(int argc, char **argv) {
         // medical imaging layers
         // success = success && test_pool_3d("fwd", pooling_max, {334, 300, 396}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
         // success = success && test_pool_3d("fwd", pooling_max, {163, 146, 194}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
-        success = success && test_pool_3d("both", pooling_avg, { 79,  69,  93}, 32, {2, 3, 3}, {1, 1, 1}, {0, 0, 0}, 1, false);
-        success = success && test_pool_3d("both", pooling_avg, { 79,  69,  93}, 32, {2, 3, 3}, {1, 1, 1}, {0, 0, 0}, 1, true);
+        success = success && test_pool_3d("both", pooling_avg, { 79,  69,  93}, 32, {2, 3, 3}, {1, 1, 1}, {0, 0, 0}, 1);
 
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
