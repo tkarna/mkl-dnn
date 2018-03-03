@@ -52,16 +52,18 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
 
     auto src = reinterpret_cast<const data_t *>(this->input_memory(0));
     auto dst = reinterpret_cast<data_t *>(this->memory(0));
-    auto ws = alg == pooling_max && conf_.desc()->prop_kind == forward_training
-        ? reinterpret_cast<unsigned char *>(this->memory(1)) : nullptr;
+    // auto ws = alg == pooling_max && conf_.desc()->prop_kind == forward_training
+    //     ? reinterpret_cast<unsigned char *>(this->memory(1)) : nullptr;
 
     const memory_desc_wrapper src_d(conf_.src_pd());
     const memory_desc_wrapper dst_d(conf_.dst_pd());
-    const memory_desc_wrapper ws_d(conf_.workspace_pd());
-    const data_type_t ws_dt = ws ? ws_d.data_type() : data_type::undef;
+    // const memory_desc_wrapper ws_d(conf_.workspace_pd());
+    // const data_type_t ws_dt = ws ? ws_d.data_type() : data_type::undef;
 
     const int MB = conf_.MB();
-    const int OC = conf_.C();
+    const int NBLOCK = 16;
+    const int OCB = conf_.C() / NBLOCK;
+
     const int OD = conf_.OD();
     const int OH = conf_.OH();
     const int OW = conf_.OW();
@@ -78,18 +80,22 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
     const int SW = conf_.KSW();
     const int SD = conf_.KSD();
 
+    auto src_ix = MultiviewOffset(MB, OCB, ID, IH, IW);
+    auto dst_ix = MultiviewOffset(MB, OCB, OD, OH, OW);
+
     if (alg == pooling_max) {
 #       pragma omp parallel for collapse(5) schedule(static)
         for (int mb = 0; mb < MB; ++mb) {
-            for (int oc = 0; oc < OC; ++oc) {
+            for (int ocb = 0; ocb < OCB; ++ocb) {
+            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
                 for (int od = 0; od < OD; ++od) {
                     for (int oh = 0; oh < OH; ++oh) {
                         for (int ow = 0; ow < OW; ++ow) {
-                            data_t *d = &dst[dst_d.off(mb, oc, od, oh, ow)];
+                            data_t *d = &dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK + _oc];
                             d[0] = nstl::numeric_limits<data_t>::lowest();
-                            if (ws) {
-                                ws[ws_d.off(mb, oc, od, oh, ow)] = 0;
-                            }
+                            // if (ws) {
+                            // ws[ws_d.off(mb, oc, od, oh, ow)] = 0;
+                            // }
                             // ker_max(d, mb, oc, od, oh, ow);
                             for (int kd = 0; kd < KD; ++kd) {
                                 for (int kh = 0; kh < KH; ++kh) {
@@ -98,18 +104,18 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
                                         const int ih = oh * SH + kh;
                                         const int iw = ow * SW + kw;
 
-                                        auto s = src[src_d.off(mb, oc, id, ih, iw)];
+                                        auto s = src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc];
                                         if (s > d[0]) {
                                             d[0] = s;
-                                            if (ws) {
-                                                size_t off = ws_d.off(mb, oc, od, oh, ow);
-                                                if (ws_dt == data_type::u8) {
-                                                    ws[off] = kd*KH*KW + kh*KW + kw;
-                                                } else {
-                                                    assert(ws_dt == data_type::s32);
-                                                    ((int *)ws)[off] = kd*KH*KW + kh*KW + kw;
-                                                }
-                                            }
+                                            // if (ws) {
+                                            //     size_t off = ws_d.off(mb, oc, od, oh, ow);
+                                            //     if (ws_dt == data_type::u8) {
+                                            //         ws[off] = kd*KH*KW + kh*KW + kw;
+                                            //     } else {
+                                            //         assert(ws_dt == data_type::s32);
+                                            //         ((int *)ws)[off] = kd*KH*KW + kh*KW + kw;
+                                            //     }
+                                            // }
                                         }
                                     }
                                 }
@@ -118,14 +124,17 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
                     }
                 }
             }
+            }
         }
     } else {
 #       pragma omp parallel for collapse(5) schedule(static)
         for (int mb = 0; mb < MB; ++mb) {
-            for (int oc = 0; oc < OC; ++oc) {
+            for (int ocb = 0; ocb < OCB; ++ocb) {
+            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
                 for (int od = 0; od < OD; ++od) {
                     for (int oh = 0; oh < OH; ++oh) {
                         for (int ow = 0; ow < OW; ++ow) {
+                            int oc = ocb*NBLOCK + _oc;
                             data_t *d = &dst[dst_d.off(mb, oc, od, oh, ow)];
                             d[0] = 0;
                             //ker_avg(d, mb, oc, od, oh, ow);
@@ -152,6 +161,7 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
                         }
                     }
                 }
+            }
             }
         }
     }
