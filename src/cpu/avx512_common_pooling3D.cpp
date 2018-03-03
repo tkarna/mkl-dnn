@@ -127,44 +127,55 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
             }
         }
     } else {
-#       pragma omp parallel for collapse(5) schedule(static)
-        for (int mb = 0; mb < MB; ++mb) {
-            for (int ocb = 0; ocb < OCB; ++ocb) {
-            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                for (int od = 0; od < OD; ++od) {
-                    for (int oh = 0; oh < OH; ++oh) {
-                        for (int ow = 0; ow < OW; ++ow) {
-                            int oc = ocb*NBLOCK + _oc;
-                            data_t *d = &dst[dst_d.off(mb, oc, od, oh, ow)];
-                            d[0] = 0;
-                            //ker_avg(d, mb, oc, od, oh, ow);
-                            auto id_start = od*SD;
-                            auto ih_start = oh*SH;
-                            auto iw_start = ow*SW;
-                            auto id_end = nstl::min(od*SD + KD, ID);
-                            auto ih_end = nstl::min(oh*SH + KH, IH);
-                            auto iw_end = nstl::min(ow*SW + KW, IW);
+        const int idstride = IH*IW*NBLOCK;
+        const int ihstride = IW*NBLOCK;
+        const int iwstride = NBLOCK;
 
-                            auto num_summands = (alg == pooling_avg_include_padding) ? KD*KW*KH
-                                : (id_end - id_start)*(ih_end - ih_start)*(iw_end - iw_start);
+        const float denom = 1.0f/(KD*KW*KH);
+        // const int nthreads = omp_get_max_threads();
 
-                            acc_data_t dst = 0;
-                            for (int id = id_start; id < id_end; ++id) {
-                                for (int ih = ih_start; ih < ih_end; ++ih) {
-                                    for (int iw = iw_start; iw < iw_end; ++iw) {
-                                        dst += src[src_d.off(mb, oc, id, ih, iw)];
+        #pragma omp parallel
+        {
+            // const int tid = omp_get_thread_num();
+            // int start_ends[2*5];
+            // multi_decomp(start_ends, tid, nthreads, 5, &outv.dim[0], &decomp[0]);
+
+//             for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
+//                 for (int oc = start_ends[2*1+0]; oc < start_ends[2*1+1]; ++oc) {
+//                     for (int od = start_ends[2*2+0]; od < start_ends[2*2+1]; ++od) {
+//                         for (int oh = start_ends[2*3+0]; oh < start_ends[2*3+1]; ++oh) {
+//                             for (int ow = start_ends[2*4+0]; ow < start_ends[2*4+1]; ++ow) {
+#           pragma for collapse(5)
+            for (int mb = 0; mb < MB; ++mb) {
+                for (int ocb = 0; ocb < OCB; ++ocb) {
+                    for (int od = 0; od < OD; ++od) {
+                        for (int oh = 0; oh < OH; ++oh) {
+                            for (int ow = 0; ow < OW; ++ow) {
+                                data_t *dst_vec = (data_t *)&dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
+                                data_t *src_vec = (data_t *)&src[src_ix.off(mb, ocb, od*SD, oh*SH, ow*SW)*NBLOCK];
+
+                                #pragma omp simd aligned(dst_vec,src_vec)
+                                #pragma vector aligned always nontemporal
+                                for (int oc = 0; oc < NBLOCK; ++oc) {
+                                    acc_data_t dst = 0;
+                                    for (int kd = 0; kd < KD; ++kd) {
+                                        for (int kh = 0; kh < KH; ++kh) {
+                                            for (int kw = 0; kw < KW; ++kw) {
+                                                const int ioffs = kd*idstride + kh*ihstride + kw*iwstride;
+                                                dst += src_vec[oc + ioffs];
+                                            }
+                                        }
                                     }
+                                    dst_vec[oc] = math::out_round<data_t>((float)dst*denom);
                                 }
                             }
-
-                            d[0] = math::out_round<data_t>((float)dst / num_summands);
                         }
                     }
                 }
             }
-            }
         }
     }
+
 }
 
 template <data_type_t data_type, data_type_t acc_type>
