@@ -419,178 +419,62 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
         }
     } else {
         const float inv_num_summands = 1.0f/(KD*KH*KW);
-// #       pragma omp parallel for collapse(5) schedule(static)
-//         for (int mb = 0; mb < MB; ++mb) {
-//             for (int ocb = 0; ocb < OCB; ++ocb) {
-//                 for (int id = 0; id < ID; ++id) {
-//                     for (int ih = 0; ih < IH; ++ih) {
-//                         for (int iw = 0; iw < IW; ++iw) {
-//                             for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-//                                 diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] = data_type_t(0);
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-        // NOTE cannot parallelize further if looping over od,oh,ow !
-// #       pragma omp parallel for collapse(2) schedule(static)
-//         for (int mb = 0; mb < MB; ++mb) {
-//             for (int ocb = 0; ocb < OCB; ++ocb) {
-//                 for (int od = 0; od < OD; ++od) {
-//                     for (int oh = 0; oh < OH; ++oh) {
-//                         for (int ow = 0; ow < OW; ++ow) {
-//                             auto id_start = od*SD;
-//                             auto ih_start = oh*SH;
-//                             auto iw_start = ow*SW;
-//                             auto id_end = od*SD + KD;
-//                             auto ih_end = oh*SH + KH;
-//                             auto iw_end = ow*SW + KW;
-//
-//                             const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
-//
-//                             for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-//                                 for (int id = id_start; id < id_end; ++id) {
-//                                     for (int ih = ih_start; ih < ih_end; ++ih) {
-//                                         for (int iw = iw_start; iw < iw_end; ++iw) {
-//                                             diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] += diff_dst_vec[_oc] * inv_num_summands;
-//                                         }
-//                                     }
-//                                 }
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
+        const int nthreads = omp_get_max_threads();
 
-#       pragma omp parallel for collapse(5) schedule(static)
-        for (int mb = 0; mb < MB; ++mb) {
-            for (int ocb = 0; ocb < OCB; ++ocb) {
-                for (int id = 0; id < ID; ++id) {
-                    for (int ih = 0; ih < IH; ++ih) {
-                        for (int iw = 0; iw < IW; ++iw) {
-                            acc_data_t sum[NBLOCK] = {0};
-                            for (int kd = 0; kd < KD; ++kd) {
-                                for (int kh = 0; kh < KH; ++kh) {
-                                    for (int kw = 0; kw < KW; ++kw) {
-                                        if (iw < kw || ih < kh || id < kd)
-                                            continue;
-                                        int od = id - kd;
-                                        int oh = ih - kh;
-                                        int ow = iw - kw ;
-                                        if (ow % SW != 0 || oh % SH != 0 || od % SD != 0)
-                                            continue; // NOTE this branch is needed
+        std::vector<uint32_t> decomp(best_decomp(nthreads, std::vector<uint32_t>(3,1)));
+        while(decomp.size() < 5) {
+            decomp.insert(decomp.begin(), 1);
+        }
 
-                                        od /= SD;
-                                        oh /= SH;
-                                        ow /= SW;
+#       pragma omp parallel
+        {
+            const int tid = omp_get_thread_num();
+            int start_ends[2*5];
+            std::vector<int> dims = {MB, OCB, ID, IH, IW};
+            multi_decomp(start_ends, tid, nthreads, 5, &dims[0], &decomp[0]);
 
-                                        const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
+            for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
+                for (int ocb = start_ends[2*1+0]; ocb < start_ends[2*1+1]; ++ocb) {
+                    for (int id = start_ends[2*2+0]; id < start_ends[2*2+1]; ++id) {
+                        for (int ih = start_ends[2*3+0]; ih < start_ends[2*3+1]; ++ih) {
+                            for (int iw = start_ends[2*4+0]; iw < start_ends[2*4+1]; ++iw) {
+                                acc_data_t sum[NBLOCK] = {0};
+                                for (int kd = 0; kd < KD; ++kd) {
+                                    for (int kh = 0; kh < KH; ++kh) {
+                                        for (int kw = 0; kw < KW; ++kw) {
+                                            if (iw < kw || ih < kh || id < kd)
+                                                continue;
+                                            int od = id - kd;
+                                            int oh = ih - kh;
+                                            int ow = iw - kw ;
+                                            if (ow % SW != 0 || oh % SH != 0 || od % SD != 0)
+                                                continue; // NOTE this branch is needed
 
-                                        if (oh < OH && ow < OW && od < OD) { // NOTE this branch is needed
-#                                           pragma omp simd
-                                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                                sum[_oc] += diff_dst_vec[_oc];
+                                            od /= SD;
+                                            oh /= SH;
+                                            ow /= SW;
+
+                                            const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
+
+                                            if (oh < OH && ow < OW && od < OD) { // NOTE this branch is needed
+#                                               pragma omp simd
+                                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                                    sum[_oc] += diff_dst_vec[_oc];
+                                                }
                                             }
                                         }
                                     }
                                 }
+#                               pragma omp simd
+                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                    diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] = sum[_oc] * inv_num_summands;
+                                }
                             }
-#                           pragma omp simd
-                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] = sum[_oc] * inv_num_summands;
-                            }
-
-//                             auto id_start = od*SD;
-//                             auto ih_start = oh*SH;
-//                             auto iw_start = ow*SW;
-//                             auto id_end = od*SD + KD;
-//                             auto ih_end = oh*SH + KH;
-//                             auto iw_end = ow*SW + KW;
-//
-//                             const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
-//
-//                             for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-//                                 for (int id = id_start; id < id_end; ++id) {
-//                                     for (int ih = ih_start; ih < ih_end; ++ih) {
-//                                         for (int iw = iw_start; iw < iw_end; ++iw) {
-//                                             diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] += diff_dst_vec[_oc] * inv_num_summands;
-//                                         }
-//                                     }
-//                                 }
-//                             }
                         }
                     }
                 }
             }
         }
-
-// ------------------------
-//         const int odstride = OH*OW*NBLOCK;
-//         const int ohstride = OW*NBLOCK;
-//         const int owstride = NBLOCK;
-//
-//         const float inv_num_summands = 1.0f/(KD*KH*KW);
-//         const int nthreads = omp_get_max_threads();
-//
-//         std::vector<uint32_t> decomp(best_decomp(nthreads, std::vector<uint32_t>(3,1)));
-//         while(decomp.size() < 5) {
-//             decomp.insert(decomp.begin(), 1);
-//         }
-//
-//         #pragma omp parallel
-//         {
-//             const int tid = omp_get_thread_num();
-//             int start_ends[2*5];
-//             std::vector<int> dims = {MB, OCB, ID, IH, IW};
-//             multi_decomp(start_ends, tid, nthreads, 5, &dims[0], &decomp[0]);
-//
-//             for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
-//                 for (int ocb = start_ends[2*1+0]; ocb < start_ends[2*1+1]; ++ocb) {
-//                     for (int id = start_ends[2*2+0]; id < start_ends[2*2+1]; ++id) {
-//                         for (int ih = start_ends[2*3+0]; ih < start_ends[2*3+1]; ++ih) {
-//                             for (int iw = start_ends[2*4+0]; iw < start_ends[2*4+1]; ++iw) {
-//
-//                                 // float *iv = &inv[opt_idx_t{mb, oc, id, ih, iw, 0}];
-//                                 data_t *diff_src_vec = &diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK];
-//
-//                                 const int od_base = id/SD;
-//                                 const int oh_base = ih/SH;
-//                                 const int ow_base = iw/SW;
-//
-//                                 const int od_end = (id + KD)/SD;
-//                                 const int oh_end = (ih + KH)/SH;
-//                                 const int ow_end = (iw + KW)/SW;
-//
-//                                 const int od_ct = od_end - od_base;
-//                                 const int oh_ct = oh_end - oh_base;
-//                                 const int ow_ct = ow_end - ow_base;
-//
-//                                 // const float *ov = &outv[opt_idx_t{mb, oc, od_base, oh_base, ow_base,0}];
-//                                 const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od_base, oh_base, ow_base)*NBLOCK];
-//                                 #pragma vector aligned always nontemporal
-//                                 #pragma omp simd
-//                                 for(int oc = 0; oc < NBLOCK; ++oc) {
-//                                     data_t sum = 0.0f;
-//
-//                                     for (int od = 0; od < od_ct; ++od) {
-//                                         for (int oh = 0; oh < oh_ct; ++oh) {
-//                                             for (int ow = 0; ow < ow_ct; ++ow) {
-//                                                 const int offs = od*odstride + oh*ohstride + ow*owstride;
-//                                                 sum += diff_dst_vec[offs + oc];
-//                                             }
-//                                         }
-//                                     }
-//                                     diff_src_vec[oc] = sum*inv_num_summands;
-//                                 }
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-// -----------------------
     }
 }
 
