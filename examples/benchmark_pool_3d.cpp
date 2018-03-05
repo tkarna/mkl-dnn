@@ -120,31 +120,20 @@ void compute_pool(std::string direction,
            dst_dims[1], batch_size
           );
 
-    const double ntime_target = 1.0e3; // Time in ms
-    int nruns = 2;
-    const int max_nruns = 1e9;
-    const double overshoot = 1.2;
-    double elapsed = 0.0;
+    int nruns = 50;
+    net.clear();
 
-    while(elapsed < ntime_target) {
-
-        // NOTE reorders have not been created/called so result will be wrong
-        for (int it = 0; it < nruns; it++) {
-            net.push_back(pool_fwd_op);
-        }
-
-        // Execute
-        auto t1 = Clock::now();
-        stream(stream::kind::eager).submit(net).wait();
-        auto t2 = Clock::now();
-
-        elapsed = (double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-        if(elapsed < ntime_target)
-        {
-            std::cout << " [took " << elapsed << " discarding....]" << std::endl;
-            nruns = std::min(std::max((double)nruns+1.0, nruns*overshoot*ntime_target/elapsed), (double)max_nruns);
-        }
+    // NOTE reorders have not been created/called so result will be wrong
+    for (int it = 0; it < nruns; it++) {
+        net.push_back(pool_fwd_op);
     }
+
+    // Execute
+    auto t1 = Clock::now();
+    stream(stream::kind::eager).submit(net).wait();
+    auto t2 = Clock::now();
+
+    double elapsed = (double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
 
     // forward complexity
     float complexity = ((float)dst_dims[2])*dst_dims[3]*dst_dims[4]*kernel[0]*kernel[1]*kernel[2]*dst_dims[1];
@@ -209,28 +198,18 @@ void compute_pool(std::string direction,
     /* create forward op primitive */
     auto pool_bwd_op = pooling_backward(pool_bwd_pd, reorder_diff_dst_mem, reorder_diff_src_mem);
 
-    nruns = 2;
-    elapsed = 0.0;
-
-    while(elapsed < ntime_target) {
-
-        // NOTE reorders have not been created/called so result will be wrong
-        for (int it = 0; it < nruns; it++) {
-            net.push_back(pool_bwd_op);
-        }
-
-        // Execute
-        auto t1 = Clock::now();
-        stream(stream::kind::eager).submit(net).wait();
-        auto t2 = Clock::now();
-
-        elapsed = (double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-        if(elapsed < ntime_target)
-        {
-            std::cout << " [took " << elapsed << " discarding....]" << std::endl;
-            nruns = std::min(std::max((double)nruns+1.0, nruns*overshoot*ntime_target/elapsed), (double)max_nruns);
-        }
+    net.clear();
+    // NOTE reorders have not been created/called so result will be wrong
+    for (int it = 0; it < nruns; it++) {
+        net.push_back(pool_bwd_op);
     }
+
+    // Execute
+    t1 = Clock::now();
+    stream(stream::kind::eager).submit(net).wait();
+    t2 = Clock::now();
+
+    elapsed = (double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
 
     // backward complexity
     complexity = ((float)dst_dims[2])*dst_dims[3]*dst_dims[4]*kernel[0]*kernel[1]*kernel[2]*dst_dims[1];
@@ -345,13 +324,13 @@ int main(int argc, char **argv) {
         test_pool_3d("both", pooling_avg, { 79,  69,  93}, 32, {2, 3, 3}, {1, 1, 1}, {0, 0, 0}, 1);
 
         // 32, 64 cubes (additional -- not in the applications)
-        std::vector<int> in_sizes = {32, 64};
-        std::vector<int> kernel_sizes = {2, 3};
-        for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
-            for(std::vector<int>::iterator k = kernel_sizes.begin(); k != kernel_sizes.end(); ++k) {
-                test_pool_3d("both", pooling_avg, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0});
-            }
-        }
+        // std::vector<int> in_sizes = {32, 64};
+        // std::vector<int> kernel_sizes = {2, 3};
+        // for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
+        //     for(std::vector<int>::iterator k = kernel_sizes.begin(); k != kernel_sizes.end(); ++k) {
+        //         test_pool_3d("both", pooling_avg, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0});
+        //     }
+        // }
     }
     catch(error& e) {
         std::cerr << "status: " << e.status << std::endl;
