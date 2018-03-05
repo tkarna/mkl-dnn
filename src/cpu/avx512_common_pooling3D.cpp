@@ -445,19 +445,15 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
                                 int od_end = std::min(id/SD + 1, OD);
                                 int oh_end = std::min(ih/SH + 1, OH);
                                 int ow_end = std::min(iw/SW + 1, OW);
-                                for (int od = od_start; od < od_end; ++od) {
-                                    for (int oh = oh_start; oh < oh_end; ++oh) {
-                                        for (int ow = ow_start; ow < ow_end; ++ow) {
-                                            const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
-#                                           pragma omp simd
-                                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                    for (int od = od_start; od < od_end; ++od) {
+                                        for (int oh = oh_start; oh < oh_end; ++oh) {
+                                            for (int ow = ow_start; ow < ow_end; ++ow) {
+                                                const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
                                                 sum[_oc] += diff_dst_vec[_oc];
                                             }
                                         }
                                     }
-                                }
-#                               pragma omp simd
-                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
                                     diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] = sum[_oc] * inv_num_summands;
                                 }
                             }
