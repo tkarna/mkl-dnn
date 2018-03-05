@@ -439,28 +439,19 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
                         for (int ih = start_ends[2*3+0]; ih < start_ends[2*3+1]; ++ih) {
                             for (int iw = start_ends[2*4+0]; iw < start_ends[2*4+1]; ++iw) {
                                 acc_data_t sum[NBLOCK] = {0};
-                                for (int kd = 0; kd < KD; ++kd) {
-                                    for (int kh = 0; kh < KH; ++kh) {
-                                        for (int kw = 0; kw < KW; ++kw) {
-                                            if (iw < kw || ih < kh || id < kd)
-                                                continue;
-                                            int od = id - kd;
-                                            int oh = ih - kh;
-                                            int ow = iw - kw ;
-                                            if (ow % SW != 0 || oh % SH != 0 || od % SD != 0)
-                                                continue; // NOTE this branch is needed
-
-                                            od /= SD;
-                                            oh /= SH;
-                                            ow /= SW;
-
+                                int od_start = std::max((int)std::ceil(float(id - KD + 1)/SD), 0);
+                                int oh_start = std::max((int)std::ceil(float(ih - KH + 1)/SH), 0);
+                                int ow_start = std::max((int)std::ceil(float(iw - KW + 1)/SW), 0);
+                                int od_end = std::min(id/SD + 1, OD);
+                                int oh_end = std::min(ih/SH + 1, OH);
+                                int ow_end = std::min(iw/SW + 1, OW);
+                                for (int od = od_start; od < od_end; ++od) {
+                                    for (int oh = oh_start; oh < oh_end; ++oh) {
+                                        for (int ow = ow_start; ow < ow_end; ++ow) {
                                             const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
-
-                                            if (oh < OH && ow < OW && od < OD) { // NOTE this branch is needed
-#                                               pragma omp simd
-                                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                                    sum[_oc] += diff_dst_vec[_oc];
-                                                }
+#                                           pragma omp simd
+                                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                                sum[_oc] += diff_dst_vec[_oc];
                                             }
                                         }
                                     }
