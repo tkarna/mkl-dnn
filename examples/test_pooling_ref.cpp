@@ -641,9 +641,11 @@ int main(int argc, char **argv) {
         std::vector<int> kernel_sizes = {2, 3};
         for(std::vector<int>::iterator s = in_sizes.begin(); s != in_sizes.end(); ++s) {
             for(std::vector<int>::iterator k = kernel_sizes.begin(); k != kernel_sizes.end(); ++k) {
-                success = success && test_pool_3d("fwd", pooling_max, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, false);
-                success = success && test_pool_3d("fwd", pooling_max, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, true);
-                success = success && test_pool_3d("both", pooling_avg, {*s ,*s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, true);
+                success = success && test_pool_3d("fwd", pooling_max, {*s, *s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, false);
+                success = success && test_pool_3d("fwd", pooling_max, {*s, *s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, true);
+                success = success && test_pool_3d("both", pooling_avg, {*s, *s, *s}, 32, {*k, *k, *k}, {1, 1, 1}, {0, 0, 0}, 1, true);
+                success = success && test_pool_3d("both", pooling_avg, {*s, *s, *s}, 32, {*k, *k, *k}, {2, 2, 2}, {0, 0, 0}, 1, true);
+                success = success && test_pool_3d("both", pooling_avg, {*s, *s, *s}, 32, {*k, *k, *k}, {1, 2, 3}, {0, 0, 0}, 1, true);
             }
         }
 
