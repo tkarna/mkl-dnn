@@ -356,6 +356,14 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
     const memory_desc_wrapper ws_d(conf_.workspace_pd());
     const memory_desc_wrapper diff_src_d(conf_.diff_src_pd());
 
+    const int MB = conf_.MB();
+    const int NBLOCK = 16;
+    const int OCB = conf_.C() / NBLOCK;
+
+    const int OD = conf_.OD();
+    const int OH = conf_.OH();
+    const int OW = conf_.OW();
+
     const int ID = conf_.ID();
     const int IH = conf_.IH();
     const int IW = conf_.IW();
@@ -368,49 +376,42 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
     const int SH = conf_.KSH();
     const int SW = conf_.KSW();
 
-    const int padD1 = conf_.padD1();
-    const int padT = conf_.padT();
-    const int padL = conf_.padL();
-
-    const int MB = conf_.MB();
-    const int OC = conf_.C();
-    const int OD = conf_.OD();
-    const int OH = conf_.OH();
-    const int OW = conf_.OW();
+    auto src_ix = MultiviewOffset(MB, OCB, ID, IH, IW);
+    auto dst_ix = MultiviewOffset(MB, OCB, OD, OH, OW);
 
     auto alg = conf_.desc()->alg_kind;
-
-    auto apply_offset = [=](int index, int offset) {
-        return (index > offset) ? index - offset : 0;
-    };
 
     if (conf_.desc()->alg_kind == alg_kind::pooling_max) {
 #       pragma omp parallel for collapse(2) schedule(static)
         for (int mb = 0; mb < MB; ++mb) {
-            for (int oc = 0; oc < OC; ++oc) {
+            for (int ocb = 0; ocb < OCB; ++ocb) {
                 for (int id = 0; id < ID; ++id) {
                     for (int ih = 0; ih < IH; ++ih) {
                         for (int iw = 0; iw < IW; ++iw) {
-                            diff_src[diff_src_d.off(mb, oc, id, ih, iw)] = data_type_t(0);
+                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] = data_type_t(0);
+                            }
                         }
                     }
                 }
                 for (int od = 0; od < OD; ++od) {
                     for (int oh = 0; oh < OH; ++oh) {
                         for (int ow = 0; ow < OW; ++ow) {
-                            const data_t *d =
-                                &diff_dst[diff_dst_d.off(mb, oc, od, oh, ow)];
-                            const size_t ws_off = ws_d.off(mb, oc, od, oh, ow);
-                            const int index = ws_d.data_type() == data_type::u8
-                                ? (int)ws[ws_off] : ((int *)ws)[ws_off];
-                            const int kd = index / (KH*KW);
-                            const int kw = (index % (KH*KW)) % KW;
-                            const int kh = (index % (KH*KW)) / KW;
-                            const int id = od * SD - padD1 + kd;
-                            const int ih = oh * SH - padT + kh;
-                            const int iw = ow * SW - padL + kw;
+                            const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
 
-                            diff_src[diff_src_d.off(mb, oc, id, ih, iw)] += d[0];
+                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                const int oc = ocb*NBLOCK + _oc;
+                                const size_t ws_off = ws_d.off(mb, oc, od, oh, ow);
+                                const int index = ws_d.data_type() == data_type::u8
+                                    ? (int)ws[ws_off] : ((int *)ws)[ws_off];
+                                const int kd = index / (KH*KW);
+                                const int kw = (index % (KH*KW)) % KW;
+                                const int kh = (index % (KH*KW)) / KW;
+                                const int id = od * SD + kd;
+                                const int ih = oh * SH + kh;
+                                const int iw = ow * SW + kw;
+                                diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] += diff_dst_vec[_oc];
+                            }
                         }
                     }
                 }
@@ -419,25 +420,26 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
     } else {
 #       pragma omp parallel for collapse(2) schedule(static)
         for (int mb = 0; mb < MB; ++mb) {
-            for (int oc = 0; oc < OC; ++oc) {
+            for (int ocb = 0; ocb < OCB; ++ocb) {
                 for (int id = 0; id < ID; ++id) {
                     for (int ih = 0; ih < IH; ++ih) {
                         for (int iw = 0; iw < IW; ++iw) {
-                            diff_src[diff_src_d.off(mb, oc, id, ih, iw)] = data_type_t(0);
+                            for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] = data_type_t(0);
+                            }
                         }
                     }
                 }
                 for (int od = 0; od < OD; ++od) {
                     for (int oh = 0; oh < OH; ++oh) {
                         for (int ow = 0; ow < OW; ++ow) {
-                            const data_t *d =
-                                &diff_dst[diff_dst_d.off(mb, oc, od, oh, ow)];
-                            auto id_start = apply_offset(od*SD, padD1);
-                            auto ih_start = apply_offset(oh*SH, padT);
-                            auto iw_start = apply_offset(ow*SW, padL);
-                            auto id_end = nstl::min(od*SD - padD1 + KD, ID);
-                            auto ih_end = nstl::min(oh*SH - padT + KH, IH);
-                            auto iw_end = nstl::min(ow*SW - padL + KW, IW);
+                            const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
+                            auto id_start = od*SD;
+                            auto ih_start = oh*SH;
+                            auto iw_start = ow*SW;
+                            auto id_end = nstl::min(od*SD + KD, ID);
+                            auto ih_end = nstl::min(oh*SH + KH, IH);
+                            auto iw_end = nstl::min(ow*SW + KW, IW);
 
                             auto num_summands = (alg == pooling_avg_include_padding) ? KD*KW*KH
                                 : (id_end - id_start)*(ih_end - ih_start)*(iw_end - iw_start);
@@ -445,7 +447,9 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
                             for (int id = id_start; id < id_end; ++id) {
                                 for (int ih = ih_start; ih < ih_end; ++ih) {
                                     for (int iw = iw_start; iw < iw_end; ++iw) {
-                                        diff_src[diff_src_d.off(mb, oc, id, ih, iw)] += d[0] / num_summands;
+                                        for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                            diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] += diff_dst_vec[_oc] / num_summands;
+                                        }
                                     }
                                 }
                             }
