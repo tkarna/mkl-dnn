@@ -418,6 +418,10 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
             }
         }
     } else {
+        const int odstride = OH*OW*NBLOCK;
+        const int ohstride = OW*NBLOCK;
+        const int owstride = NBLOCK;
+
         const float inv_num_summands = 1.0f/(KD*KH*KW);
         const int nthreads = omp_get_max_threads();
 
@@ -438,23 +442,26 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
                     for (int id = start_ends[2*2+0]; id < start_ends[2*2+1]; ++id) {
                         for (int ih = start_ends[2*3+0]; ih < start_ends[2*3+1]; ++ih) {
                             for (int iw = start_ends[2*4+0]; iw < start_ends[2*4+1]; ++iw) {
-                                acc_data_t sum[NBLOCK] = {0};
                                 int od_start = std::max((int)std::ceil(float(id - KD + 1)/SD), 0);
                                 int oh_start = std::max((int)std::ceil(float(ih - KH + 1)/SH), 0);
                                 int ow_start = std::max((int)std::ceil(float(iw - KW + 1)/SW), 0);
                                 int od_end = std::min(id/SD + 1, OD);
                                 int oh_end = std::min(ih/SH + 1, OH);
                                 int ow_end = std::min(iw/SW + 1, OW);
-                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                    for (int od = od_start; od < od_end; ++od) {
-                                        for (int oh = oh_start; oh < oh_end; ++oh) {
-                                            for (int ow = ow_start; ow < ow_end; ++ow) {
-                                                const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
-                                                sum[_oc] += diff_dst_vec[_oc];
+                                const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od_start, oh_start, ow_start)*NBLOCK];
+#                               pragma vector aligned always nontemporal
+#                               pragma omp simd
+                                for (int oc = 0; oc < NBLOCK; ++oc) {
+                                    acc_data_t sum = 0;
+                                    for (int od = 0; od < od_end-od_start; ++od) {
+                                        for (int oh = 0; oh < oh_end-oh_start; ++oh) {
+                                            for (int ow = 0; ow < ow_end-ow_start; ++ow) {
+                                                const int offs = od*odstride + oh*ohstride + ow*owstride;
+                                                sum += diff_dst_vec[offs + oc];
                                             }
                                         }
                                     }
-                                    diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] = sum[_oc] * inv_num_summands;
+                                    diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + oc] = sum * inv_num_summands;
                                 }
                             }
                         }
