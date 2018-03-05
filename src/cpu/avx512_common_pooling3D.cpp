@@ -442,12 +442,12 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
                     for (int id = start_ends[2*2+0]; id < start_ends[2*2+1]; ++id) {
                         for (int ih = start_ends[2*3+0]; ih < start_ends[2*3+1]; ++ih) {
                             for (int iw = start_ends[2*4+0]; iw < start_ends[2*4+1]; ++iw) {
-                                int od_start = std::max((int)std::ceil(float(id - KD + 1)/SD), 0);
-                                int oh_start = std::max((int)std::ceil(float(ih - KH + 1)/SH), 0);
-                                int ow_start = std::max((int)std::ceil(float(iw - KW + 1)/SW), 0);
-                                int od_end = std::min(id/SD + 1, OD);
-                                int oh_end = std::min(ih/SH + 1, OH);
-                                int ow_end = std::min(iw/SW + 1, OW);
+                                int od_start = nstl::max((id - KD + SD)/SD, 0);
+                                int oh_start = nstl::max((ih - KH + SH)/SH, 0);
+                                int ow_start = nstl::max((iw - KW + SW)/SW, 0);
+                                int od_end = nstl::min(id/SD + 1, OD);
+                                int oh_end = nstl::min(ih/SH + 1, OH);
+                                int ow_end = nstl::min(iw/SW + 1, OW);
                                 const data_t *diff_dst_vec = &diff_dst[dst_ix.off(mb, ocb, od_start, oh_start, ow_start)*NBLOCK];
 #                               pragma vector aligned always nontemporal
 #                               pragma omp simd
