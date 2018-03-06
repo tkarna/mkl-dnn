@@ -136,6 +136,16 @@ if(WIN32)
     set_property(TEST benchmark-pool-3d-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
 endif()
 
+add_executable(test-reorder-3d-cpp test_reorder_3d.cpp)
+set_property(TARGET test-reorder-3d-cpp PROPERTY CXX_STANDARD 11)
+target_link_libraries(test-reorder-3d-cpp ${LIB_NAME})
+add_test(test-reorder-3d-cpp test-reorder-3d-cpp)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/config_template.vcxproj.user
+      test-reorder-3d-cpp.vcxproj.user @ONLY)
+    set_property(TEST test-reorder-3d-cpp PROPERTY ENVIRONMENT "PATH=${CTESTCONFIG_PATH}")
+endif()
+
 add_executable(simple-training-net-c simple_training_net.c)
 set_property(TARGET simple-training-net-c PROPERTY C_STANDARD 99)
 if(WIN32)

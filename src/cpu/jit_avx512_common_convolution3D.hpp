@@ -218,7 +218,6 @@ struct jit_avx512_common_convolution3D_bwd_data_t: public cpu_primitive_t {
             auto status = jit_avx512_common_conv3D_bwd_data_kernel_f32::init_conf(
                     jcp_, *this->cdesc(), this->diff_src_pd_, this->weights_pd_,
                     this->diff_dst_pd_);
-            printf(">>> bwd init returns %d\n", status);
             return status;
         }
         jit_conv_conf_t jcp_;
