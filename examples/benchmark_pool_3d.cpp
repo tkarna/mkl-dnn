@@ -87,14 +87,12 @@ void compute_pool(std::string direction,
     bool dst_needs_reorder = op_fwd_dst_fmt != dst_fmt;
 
     auto src_fmt = src_md.data.format;
-    // NOTE we cannot ask for the src format... assume the same as dst
-    auto op_fwd_src_fmt = op_fwd_dst_fmt;
+    auto op_fwd_src_fmt = pool_fwd_pd.src_primitive_desc().desc().data.format;
     bool src_needs_reorder = op_fwd_src_fmt != src_fmt;
 
     auto reorder_src_mem = src_mem;
     if (src_needs_reorder) {
-        // NOTE assuming src fmt == dst fmt
-        reorder_src_mem = memory({{{src_dims}, memory::data_type::f32, (memory::format)op_fwd_src_fmt}, cpu_engine});
+        reorder_src_mem = memory(pool_fwd_pd.src_primitive_desc());
     }
     auto reorder_dst_mem = dst_mem;
     if (dst_needs_reorder) {
@@ -180,8 +178,7 @@ void compute_pool(std::string direction,
     bool diff_src_needs_reorder = op_bwd_diff_src_fmt != diff_src_fmt;
 
     auto diff_dst_fmt = diff_dst_md.data.format;
-    // NOTE we cannot ask for the dst format... assume the same as src
-    auto op_bwd_diff_dst_fmt = op_bwd_diff_src_fmt;
+    auto op_bwd_diff_dst_fmt = pool_bwd_pd.diff_dst_primitive_desc().desc().data.format;
     bool diff_dst_needs_reorder = op_bwd_diff_dst_fmt != diff_dst_fmt;
 
     auto reorder_diff_src_mem = diff_src_mem;
@@ -191,8 +188,7 @@ void compute_pool(std::string direction,
 
     auto reorder_diff_dst_mem = diff_dst_mem;
     if (diff_dst_needs_reorder) {
-        // NOTE assuming src fmt == dst fmt
-        reorder_diff_dst_mem = memory({{{dst_dims}, memory::data_type::f32, (memory::format)op_bwd_diff_dst_fmt}, cpu_engine});
+        reorder_diff_dst_mem = memory(pool_bwd_pd.diff_dst_primitive_desc());
     }
 
     /* create forward op primitive */
