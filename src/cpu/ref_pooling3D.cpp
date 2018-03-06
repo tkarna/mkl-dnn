@@ -222,7 +222,7 @@ void ref_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
         auto iw_end = nstl::min(ow*SW - padL + KW, IW);
 
         auto num_summands = (alg == pooling_avg_include_padding) ? KD*KW*KH
-            : (id_end - ih_start)*(ih_end - ih_start)*(iw_end - iw_start);
+            : (id_end - id_start)*(ih_end - ih_start)*(iw_end - iw_start);
 
         for (int id = id_start; id < id_end; ++id) {
             for (int ih = ih_start; ih < ih_end; ++ih) {

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_REF_POOLING3D_HPP
-#define CPU_REF_POOLING3D_HPP
+#ifndef CPU_AVX512_COMMON_POOLING3D_HPP
+#define CPU_AVX512_COMMON_POOLING3D_HPP
 
 #include <assert.h>
 
@@ -24,20 +24,21 @@
 #include "cpu_engine.hpp"
 #include "type_helpers.hpp"
 #include "utils.hpp"
+#include "mkldnn_thread.hpp"
 
 namespace mkldnn {
 namespace impl {
 namespace cpu {
 
 template <impl::data_type_t data_type, impl::data_type_t acc_type = data_type>
-struct ref_pooling3D_fwd_t: public cpu_primitive_t {
+struct avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
     struct pd_t: public cpu_pooling_fwd_pd_t {
         pd_t(engine_t *engine, const pooling_desc_t *adesc,
                 const primitive_attr_t *attr,
                 const pooling_fwd_pd_t *hint_fwd_pd)
             : cpu_pooling_fwd_pd_t(engine, adesc, attr, hint_fwd_pd) {}
 
-        DECLARE_COMMON_PD_T(ref_pooling3D_fwd_t);
+        DECLARE_COMMON_PD_T(avx512_common_pooling3D_fwd_t);
 
         virtual status_t init() override {
             using namespace prop_kind;
@@ -54,7 +55,24 @@ struct ref_pooling3D_fwd_t: public cpu_primitive_t {
                         dst_pd()->desc()->data_type)
                 && desc()->accum_data_type == acc_type
                 && this->desc()->pool_kind == pool_kind::pool3D
+                && this->desc()->diff_src_desc.dims[1] % 16 == 0
+                && utils::one_of(desc_.src_desc.format, memory_format::nCdhw16c, memory_format::any)
+                && utils::one_of(desc_.dst_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && attr()->has_default_values();
+            printf("fwd avx512 %d %d %d %d %d %d %d -> %d\n",
+                set_default_params() == status::success,
+                utils::one_of(desc()->prop_kind, forward_training,
+                        forward_inference),
+                utils::one_of(desc()->alg_kind, pooling_max,
+                        pooling_avg_include_padding,
+                        pooling_avg_exclude_padding),
+                utils::everyone_is(data_type, src_pd()->desc()->data_type,
+                        dst_pd()->desc()->data_type),
+                desc()->accum_data_type == acc_type,
+                this->desc()->pool_kind == pool_kind::pool3D,
+                attr()->has_default_values(),
+                ok
+            );
             if (!ok) return status::unimplemented;
 
             bool is_training = desc_.prop_kind == forward_training;
@@ -63,7 +81,8 @@ struct ref_pooling3D_fwd_t: public cpu_primitive_t {
                 indices_desc.data_type = pooling_index_data_type(desc());
                 ws_pd_ = cpu_memory_t::pd_t(engine_, &indices_desc);
             }
-
+            if (ok)
+                printf(" --> avx512 pool fwd OK\n");
             return status::success;
         }
 
@@ -95,15 +114,15 @@ struct ref_pooling3D_fwd_t: public cpu_primitive_t {
         virtual status_t set_default_params() override {
             using namespace memory_format;
             if (this->src_pd_.desc()->format == any)
-                CHECK(this->src_pd_.set_format(ncdhw));
+                CHECK(this->src_pd_.set_format(nCdhw16c));
             if (this->dst_pd_.desc()->format == any)
-                CHECK(this->dst_pd_.set_format(ncdhw));
+                CHECK(this->dst_pd_.set_format(nCdhw16c));
             return status::success;
         }
 
     };
 
-    ref_pooling3D_fwd_t(const pd_t *pd, const input_vector &inputs,
+    avx512_common_pooling3D_fwd_t(const pd_t *pd, const input_vector &inputs,
             const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
 
@@ -121,14 +140,14 @@ private:
 };
 
 template <impl::data_type_t data_type, impl::data_type_t acc_type = data_type>
-struct ref_pooling3D_bwd_t: public cpu_primitive_t {
+struct avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
     struct pd_t: public cpu_pooling_bwd_pd_t {
         pd_t(engine_t *engine, const pooling_desc_t *adesc,
              const primitive_attr_t *attr,
              const pooling_fwd_pd_t *hint_fwd_pd)
             : cpu_pooling_bwd_pd_t(engine, adesc, attr, hint_fwd_pd) {}
 
-        DECLARE_COMMON_PD_T(ref_pooling3D_bwd_t);
+        DECLARE_COMMON_PD_T(avx512_common_pooling3D_bwd_t);
 
         virtual status_t init() override {
             using namespace prop_kind;
@@ -137,7 +156,7 @@ struct ref_pooling3D_bwd_t: public cpu_primitive_t {
             bool ok = true
                 && set_default_params() == status::success
                 && utils::one_of(desc()->prop_kind, backward_data)
-                && utils::one_of(desc()->alg_kind, pooling_max,
+                && utils::one_of(desc()->alg_kind, /* pooling_max, */
                         pooling_avg_include_padding,
                         pooling_avg_exclude_padding)
                 && utils::everyone_is(data_type, diff_dst_pd()->desc()->data_type,
@@ -147,11 +166,16 @@ struct ref_pooling3D_bwd_t: public cpu_primitive_t {
                       && hint_fwd_pd_->workspace_pd()->engine()->kind()
                                 == engine_kind::cpu)
                 && this->desc()->pool_kind == pool_kind::pool3D
+                && this->desc()->diff_src_desc.dims[1] % 16 == 0
+                && utils::one_of(desc_.diff_src_desc.format, memory_format::nCdhw16c, memory_format::any)
+                && utils::one_of(desc_.diff_dst_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && attr()->has_default_values();
             if (!ok) return status::unimplemented;
 
             if (desc()->alg_kind == pooling_max)
                 ws_pd_ = *(cpu_memory_t::pd_t*)hint_fwd_pd_->workspace_pd();
+            if (ok)
+                printf(" --> avx512 pool bwd OK\n");
 
             return status::success;
         }
@@ -184,15 +208,15 @@ struct ref_pooling3D_bwd_t: public cpu_primitive_t {
         virtual status_t set_default_params() {
             using namespace memory_format;
             if (diff_dst_pd_.desc()->format == any)
-                CHECK(diff_dst_pd_.set_format(ncdhw));
+                CHECK(diff_dst_pd_.set_format(nCdhw16c));
             if (diff_src_pd_.desc()->format == any)
-                CHECK(diff_src_pd_.set_format(ncdhw));
+                CHECK(diff_src_pd_.set_format(nCdhw16c));
             return status::success;
         }
 
     };
 
-    ref_pooling3D_bwd_t(const pd_t *pd, const input_vector &inputs,
+    avx512_common_pooling3D_bwd_t(const pd_t *pd, const input_vector &inputs,
                       const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
     typedef typename prec_traits<data_type>::type data_t;

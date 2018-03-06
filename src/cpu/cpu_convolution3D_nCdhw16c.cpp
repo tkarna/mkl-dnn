@@ -268,29 +268,21 @@ void cpu_convolution3D_nCdhw16c_bwd_data_t<diff_src_type, wei_type, diff_dst_typ
                         for (int iw = 0; iw < IW; ++iw) {
                             acc_data_t ds[NBLOCK] = {0};
                             for (int ocb = 0; ocb < OCB; ++ocb) {
-                                for (int kd = 0; kd < KD; ++kd) {
-                                    for (int kh = 0; kh < KH; ++kh) {
-                                        for (int kw = 0; kw < KW; ++kw) {
-                                            if (iw < kw || ih < kh || id < kd)
-                                                continue;
-                                            int od = id - kd;
-                                            int oh = ih - kh;
-                                            int ow = iw - kw ;
-                                            if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0)
-                                                continue; // NOTE this branch is needed
-
-                                            od /= KSD;
-                                            oh /= KSH;
-                                            ow /= KSW;
-
-                                            if (oh < OH && ow < OW && od < OD) { // NOTE this branch is needed
-#                                               pragma omp simd
-                                                for (int _ic = 0; _ic < NBLOCK; ++_ic) {
-#                                                   pragma unroll (NBLOCK)
-                                                    for (int _oc = 0; _oc < NBLOCK; ++_oc) {
-                                                        ds[_ic] += (acc_data_t)diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK + _oc] *
-                                                            weights[w_ix.off(ocb, icb, kd, kh, kw)*NBLOCK*NBLOCK +_oc*NBLOCK + _ic];
-                                                    }
+                                int od_start = nstl::max((id - KD + KSD)/KSD, 0);
+                                int oh_start = nstl::max((ih - KH + KSH)/KSH, 0);
+                                int ow_start = nstl::max((iw - KW + KSW)/KSW, 0);
+                                int od_end = nstl::min(id/KSD + 1, OD);
+                                int oh_end = nstl::min(ih/KSH + 1, OH);
+                                int ow_end = nstl::min(iw/KSW + 1, OW);
+                                for (int od = 0; od < od_end-od_start; ++od) {
+                                    for (int oh = 0; oh < oh_end-oh_start; ++oh) {
+                                        for (int ow = 0; ow < ow_end-ow_start; ++ow) {
+#                                           pragma omp simd
+                                            for (int _ic = 0; _ic < NBLOCK; ++_ic) {
+#                                               pragma unroll (NBLOCK)
+                                                for (int _oc = 0; _oc < NBLOCK; ++_oc) {
+                                                    ds[_ic] += (acc_data_t)diff_dst[dst_ix.off(mb, ocb, od_start + od, oh_start + oh, ow_start + ow)*NBLOCK + _oc] *
+                                                        weights[w_ix.off(ocb, icb, id - (od_start + od)*KSD, ih - (oh_start + oh)*KSH, iw - (ow_start + ow)*KSW)*NBLOCK*NBLOCK +_oc*NBLOCK + _ic];
                                                 }
                                             }
                                         }
