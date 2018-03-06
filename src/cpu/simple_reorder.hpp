@@ -167,7 +167,6 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     static status_t execute(const cpu_reorder_pd_t *pd,
         const data_t<type_i> *input, data_t<type_o> *output) {
         DECLARE_COMMON_PARAMS();
-        //printf("\nAmrita: my code of reorder from ncdhw to ndhwc or other way called.\n");
 
         const auto &dims = input_d.dims();
         const auto is = input_d.blocking_desc().strides[0];
@@ -204,45 +203,6 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 ker(i, o);
             }
         }
-
-#if 0
-        printf ("\n Dims are: %d, %d, %d, %d, %d", dims[0], dims[1], dims[2], dims[3], dims[4]) ;
-        printf("\nInput\n");
-        for (int n = 0; n < dims[0]; ++n) {
-            for (int c = 0; c < dims[1]; c++) {
-                for (int d = 0; d < dims[2]; d++) {
-                    for (int h = 0; h < dims[3]; ++h) { 
-                        for (int w = 0; w < dims[4]; w++ ) 
-                        {                
-                            printf ( " %f ", output[input_d.blk_off(n, c, d, h, w)] );                                
-                        }
-                        printf("\n");
-                    }
-                    printf("\n");
-                }
-                printf("\n");
-            }
-            printf("\n");
-        }
-
-        printf("\nOutput\n");
-        for (int n = 0; n < dims[0]; ++n) {
-            for (int c = 0; c < dims[1]; c++){ 
-                for (int d = 0; d < dims[2]; d++) {
-                    for (int h = 0; h < dims[3]; ++h) { 
-                        for (int w = 0; w < dims[4]; w++ ) 
-                        {                
-                            printf ( " %f ", output[output_d.blk_off(n, c, d, h, w)] );                
-                        }
-                        printf("\n");
-                    }
-                    printf("\n");
-                }
-                printf("\n");
-            }
-            printf("\n");
-        }
-#endif
 
         return success;
     }

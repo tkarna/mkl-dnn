@@ -59,20 +59,6 @@ struct avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
                 && utils::one_of(desc_.src_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && utils::one_of(desc_.dst_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && attr()->has_default_values();
-            printf("fwd avx512 %d %d %d %d %d %d %d -> %d\n",
-                set_default_params() == status::success,
-                utils::one_of(desc()->prop_kind, forward_training,
-                        forward_inference),
-                utils::one_of(desc()->alg_kind, pooling_max,
-                        pooling_avg_include_padding,
-                        pooling_avg_exclude_padding),
-                utils::everyone_is(data_type, src_pd()->desc()->data_type,
-                        dst_pd()->desc()->data_type),
-                desc()->accum_data_type == acc_type,
-                this->desc()->pool_kind == pool_kind::pool3D,
-                attr()->has_default_values(),
-                ok
-            );
             if (!ok) return status::unimplemented;
 
             bool is_training = desc_.prop_kind == forward_training;
@@ -81,8 +67,6 @@ struct avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
                 indices_desc.data_type = pooling_index_data_type(desc());
                 ws_pd_ = cpu_memory_t::pd_t(engine_, &indices_desc);
             }
-            if (ok)
-                printf(" --> avx512 pool fwd OK\n");
             return status::success;
         }
 
@@ -174,8 +158,6 @@ struct avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
 
             if (desc()->alg_kind == pooling_max)
                 ws_pd_ = *(cpu_memory_t::pd_t*)hint_fwd_pd_->workspace_pd();
-            if (ok)
-                printf(" --> avx512 pool bwd OK\n");
 
             return status::success;
         }
