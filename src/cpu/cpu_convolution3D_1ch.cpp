@@ -161,7 +161,7 @@ void _cpu_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, dst_type, acc_t
                         if (OWREM > 0) {
                             for (int owb = OWB - 1; owb < OWB; ++owb) {
                                 acc_data_t a[OBLOCK][NBLOCK];
-                                for (int _ow = 0; _ow < OBLOCK; ++_ow) {
+                                for (int _ow = 0; _ow < OWREM; ++_ow) {
 #                                   pragma omp simd
                                     for (int _oc = 0; _oc < NBLOCK; ++_oc) {
                                         a[_ow][_oc] = (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
