@@ -45,11 +45,28 @@ static const rpd_create_f cpu_reorder_impl_list[] = {
     simple_reorder_t<f32, oidhw, f32, Oidhw16o, fmt_order::reverse>::pd_t::create,
     simple_reorder_t<f32, goidhw, f32, gOidhw16o, fmt_order::keep>::pd_t::create,
     simple_reorder_t<f32, goidhw, f32, gOidhw16o, fmt_order::reverse>::pd_t::create,
+    simple_reorder_t<f32, oidhw, f32, oIdhw16i, fmt_order::keep>::pd_t::create,
+    simple_reorder_t<f32, oidhw, f32, oIdhw16i, fmt_order::reverse>::pd_t::create,
 
     simple_reorder_t<f32, oidhw, f32, OIdhw16o16i, fmt_order::keep>::pd_t::create,
     simple_reorder_t<f32, oidhw, f32, OIdhw16o16i, fmt_order::reverse>::pd_t::create,
     simple_reorder_t<f32, goidhw, f32, gOIdhw16o16i, fmt_order::keep>::pd_t::create,
     simple_reorder_t<f32, goidhw, f32, gOIdhw16o16i, fmt_order::reverse>::pd_t::create,
+
+    simple_reorder_t<f32, oidhw, f32, OIdhw16i16o, fmt_order::keep>::pd_t::create,
+    simple_reorder_t<f32, oidhw, f32, OIdhw16i16o, fmt_order::reverse>::pd_t::create,
+    simple_reorder_t<f32, goidhw, f32, gOIdhw16i16o, fmt_order::keep>::pd_t::create,
+    simple_reorder_t<f32, goidhw, f32, gOIdhw16i16o, fmt_order::reverse>::pd_t::create,
+
+    simple_reorder_t<f32, dhwio, f32, OIdhw16i16o, fmt_order::keep>::pd_t::create,
+    simple_reorder_t<f32, dhwio, f32, OIdhw16i16o, fmt_order::reverse>::pd_t::create,
+    simple_reorder_t<f32, dhwio, f32, OIdhw16o16i, fmt_order::keep>::pd_t::create,
+    simple_reorder_t<f32, dhwio, f32, OIdhw16o16i, fmt_order::reverse>::pd_t::create,
+
+    simple_reorder_t<f32, dhwio, f32, Oidhw16o, fmt_order::keep>::pd_t::create,
+    simple_reorder_t<f32, dhwio, f32, Oidhw16o, fmt_order::reverse>::pd_t::create,
+    simple_reorder_t<f32, dhwio, f32, oIdhw16i, fmt_order::keep>::pd_t::create,
+    simple_reorder_t<f32, dhwio, f32, oIdhw16i, fmt_order::reverse>::pd_t::create,
 
     simple_reorder_t<f32, any, f32, any, fmt_order::any, spec::direct_copy>::pd_t::create,
     simple_reorder_t<f32, any, f32, any, fmt_order::any, spec::direct_copy_except_dim_0>::pd_t::create,
