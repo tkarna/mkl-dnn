@@ -231,9 +231,9 @@ int main(int argc, char **argv) {
         success = success && test_reorder(memory::format::dhwio, memory::format::OIdhw16i16o);
         success = success && test_reorder(memory::format::OIdhw16o16i, memory::format::OIdhw16i16o);
         success = success && test_reorder(memory::format::oidhw, memory::format::oIdhw16i);
+        success = success && test_reorder(memory::format::dhwio, memory::format::OIdhw16o16i);
 
         // NOTE these fall back to the generic (and slow) reorder
-//         success = success && test_reorder(memory::format::dhwio, memory::format::OIdhw16o16i);
 //         success = success && test_reorder(memory::format::dhwio, memory::format::oIdhw16i);
 //         success = success && test_reorder(memory::format::dhwio, memory::format::Oidhw16o);
 
