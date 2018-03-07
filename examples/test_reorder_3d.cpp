@@ -93,13 +93,78 @@ void fill_nCdhw16c(float* array, const int N, const int C, const int D, const in
     } } } } } }
 }
 
+void fill_OIdhw16o16i(float* array, const int O, const int I, const int D, const int H, const int W) {
+    const int NBLOCK = 16;
+    const int OB = O/NBLOCK;
+    const int IB = I/NBLOCK;
+    for (int ob=0; ob < OB; ob++) {
+    for (int ib=0; ib < IB; ib++) {
+    for (int d=0; d < D; d++) {
+    for (int h=0; h < H; h++) {
+    for (int w=0; w < W; w++) {
+    for (int o=0; o < NBLOCK; o++) {
+    for (int i=0; i < NBLOCK; i++) {
+        const int offset = (((((ob*IB + ib)*D + d)*H + h)*W + w)*NBLOCK + o)*NBLOCK + i;
+        array[offset] = fill_generator(ob*NBLOCK + o, ib*NBLOCK + i, d, h, w);
+    } } } } } } }
+}
+
+void fill_OIdhw16i16o(float* array, const int O, const int I, const int D, const int H, const int W) {
+    const int NBLOCK = 16;
+    const int OB = O/NBLOCK;
+    const int IB = I/NBLOCK;
+    for (int ob=0; ob < OB; ob++) {
+    for (int ib=0; ib < IB; ib++) {
+    for (int d=0; d < D; d++) {
+    for (int h=0; h < H; h++) {
+    for (int w=0; w < W; w++) {
+    for (int o=0; o < NBLOCK; o++) {
+    for (int i=0; i < NBLOCK; i++) {
+        const int offset = (((((ob*IB + ib)*D + d)*H + h)*W + w)*NBLOCK + i)*NBLOCK + o;
+        array[offset] = fill_generator(ob*NBLOCK + o, ib*NBLOCK + i, d, h, w);
+    } } } } } } }
+}
+
+void fill_Oidhw16o(float* array, const int O, const int I, const int D, const int H, const int W) {
+    const int NBLOCK = 16;
+    const int OB = O/NBLOCK;
+    for (int ob=0; ob < OB; ob++) {
+    for (int i=0; i < I; i++) {
+    for (int d=0; d < D; d++) {
+    for (int h=0; h < H; h++) {
+    for (int w=0; w < W; w++) {
+    for (int o=0; o < NBLOCK; o++) {
+        const int offset = ((((ob*I + i)*D + d)*H + h)*W + w)*NBLOCK + o;
+        array[offset] = fill_generator(ob*NBLOCK + o, i, d, h, w);
+    } } } } } }
+}
+
+void fill_dhwcn(float* array, const int N, const int C, const int D, const int H, const int W) {
+    for (int n=0; n < N; n++) {
+    for (int c=0; c < C; c++) {
+    for (int d=0; d < D; d++) {
+    for (int h=0; h < H; h++) {
+    for (int w=0; w < W; w++) {
+        const int offset = (((d*H + h)*W + w)*C + c)*N + n;
+        array[offset] = fill_generator(n, c, d, h, w);
+    } } } } }
+}
+
 void fill_array(memory::format fmt, float* array, const int N, const int C, const int D, const int H, const int W) {
-    if (fmt == memory::format::ncdhw) {
+    if (fmt == memory::format::ncdhw || fmt == memory::format::oidhw) {
         fill_ncdhw(array, N, C, D, H, W);
     } else if (fmt == memory::format::ndhwc) {
         fill_ndhwc(array, N, C, D, H, W);
     } else if (fmt == memory::format::nCdhw16c) {
         fill_nCdhw16c(array, N, C, D, H, W);
+    } else if (fmt == memory::format::OIdhw16o16i) {
+        fill_OIdhw16o16i(array, N, C, D, H, W);
+    } else if (fmt == memory::format::OIdhw16i16o) {
+        fill_OIdhw16i16o(array, N, C, D, H, W);
+    } else if (fmt == memory::format::Oidhw16o) {
+        fill_Oidhw16o(array, N, C, D, H, W);
+    } else if (fmt == memory::format::dhwio) {
+        fill_dhwcn(array, N, C, D, H, W);
     } else {
         printf("Unknown memory format %d\n", (int)fmt);
         exit(-1);
@@ -110,8 +175,8 @@ bool test_reorder(memory::format ifmt, memory::format ofmt){
 
     auto cpu_engine = engine(engine::cpu, 0);
 
-    const int MB = 1;
-    const int IC = 16;
+    const int MB = 32;
+    const int IC = 32;
     const int ID = 12;
     const int IH = 15;
     const int IW = 8;
@@ -158,6 +223,22 @@ int main(int argc, char **argv) {
         success = success && test_reorder(memory::format::ncdhw, memory::format::ndhwc);
         success = success && test_reorder(memory::format::ncdhw, memory::format::nCdhw16c);
         success = success && test_reorder(memory::format::ndhwc, memory::format::nCdhw16c);
+
+        success = success && test_reorder(memory::format::oidhw, memory::format::OIdhw16o16i);
+        success = success && test_reorder(memory::format::oidhw, memory::format::OIdhw16i16o);
+        success = success && test_reorder(memory::format::oidhw, memory::format::Oidhw16o);
+        success = success && test_reorder(memory::format::oidhw, memory::format::dhwio);
+        success = success && test_reorder(memory::format::dhwio, memory::format::OIdhw16i16o);
+
+        // BUG FIXME fails
+//         success = success && test_reorder(memory::format::OIdhw16o16i, memory::format::OIdhw16i16o);
+
+        // NOTE these fall back to the generic (and slow) reorder
+//         success = success && test_reorder(memory::format::oidhw, memory::format::oIdhw16i);
+
+//         success = success && test_reorder(memory::format::dhwio, memory::format::OIdhw16o16i);
+//         success = success && test_reorder(memory::format::dhwio, memory::format::oIdhw16i);
+//         success = success && test_reorder(memory::format::dhwio, memory::format::Oidhw16o);
 
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
