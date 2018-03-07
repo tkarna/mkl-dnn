@@ -1756,6 +1756,67 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     typename utils::enable_if<
+        fmt_i == dhwio && fmt_o == oIdhw16i
+    >::type>
+{
+    SIMPLE_IS_APPLICABLE(false);
+
+    static status_t execute(const cpu_reorder_pd_t *pd,
+        const data_t<type_i> *input, data_t<type_o> *output) {
+        DECLARE_COMMON_PARAMS();
+
+        const auto &_dhwio_d = order_keep ? input_d : output_d;
+        const auto &dims = input_d.dims();
+        constexpr int blksize = 16;
+        const auto _dhwio_st = _dhwio_d.blocking_desc().strides[0];
+
+        auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o) {
+            if (alpha == 1.0 && beta == 0.0) {
+#               pragma omp simd
+                for (int ic = 0; ic < blksize; ++ic) {
+                    if (order_keep) {
+                        o[ic] = data_t<type_o>(i[ic * _dhwio_st[1]]);
+                    } else {
+                        o[ic * _dhwio_st[1]] = data_t<type_o>(i[ic]);
+                    }
+                }
+            } else {
+#               pragma omp simd
+                for (int ic = 0; ic < blksize; ++ic) {
+                    const auto dst_off = order_keep ? ic : ic * _dhwio_st[1];
+                    const auto src_off = order_keep ? ic * _dhwio_st[1]: ic;
+                    o[dst_off] = data_t<type_o>(alpha * i[src_off]
+                                    + (beta ? beta * o[dst_off] : 0));
+                }
+            }
+        };
+
+#       pragma omp parallel for collapse(5) schedule(static)
+        for (int d = 0; d < dims[2]; ++d) {
+            for (int h = 0; h < dims[3]; ++h) {
+                for (int w = 0; w < dims[4]; ++w) {
+                    for (int oc = 0; oc < dims[0]; ++oc) {
+                        for (int I = 0; I < dims[1] / blksize; ++I) {
+                            constexpr int i_mult = order_keep ? blksize : 1;
+                            constexpr int o_mult = order_keep ? 1 : blksize;
+                            auto i = &input[input_d.blk_off(
+                                    oc, i_mult * I, d, h, w)];
+                            auto o = &output[output_d.blk_off(
+                                    oc, o_mult * I, d, h, w)];
+                            ker(i, o);
+                        }
+                    }
+                }
+            }
+        }
+
+        return success;
+    }
+};
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+    typename utils::enable_if<
           (fmt_i == goihw && (fmt_o == gOIhw8i16o2i))
           || (fmt_i == oihw && (fmt_o == OIhw8i16o2i))
     >::type>

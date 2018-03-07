@@ -233,9 +233,7 @@ int main(int argc, char **argv) {
         success = success && test_reorder(memory::format::oidhw, memory::format::oIdhw16i);
         success = success && test_reorder(memory::format::dhwio, memory::format::OIdhw16o16i);
         success = success && test_reorder(memory::format::dhwio, memory::format::Oidhw16o);
-
-        // NOTE these fall back to the generic (and slow) reorder
-//         success = success && test_reorder(memory::format::dhwio, memory::format::oIdhw16i);
+        success = success && test_reorder(memory::format::dhwio, memory::format::oIdhw16i);
 
         if (success) {
             std::cout << "All tests passed successfully." << std::endl;
