@@ -172,6 +172,9 @@ status_t jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::init_conf(
     jcp.ngroups = 1;
 
     jcp.mb = src_d.dims()[0];
+    if (jcp.mb != 1)
+        return status::unimplemented;
+
     jcp.oc = diff_dst_d.dims()[1];
     jcp.ic = src_d.dims()[1];
 
@@ -182,6 +185,13 @@ status_t jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::init_conf(
     jcp.od = diff_dst_d.dims()[2];
     jcp.oh = diff_dst_d.dims()[3];
     jcp.ow = diff_dst_d.dims()[4];
+
+    // TODO: Remove this check.
+    // Current thread decomposition is lazy and doesn't work for all problem sizes.
+    if (jcp.od != 126 || jcp.oh != 126 || jcp.ow != 126 || omp_get_max_threads() != 64)
+    {
+        return status::unimplemented;
+    }
 
     jcp.kd = diff_weights_d.dims()[2];
     jcp.kh = diff_weights_d.dims()[3];
