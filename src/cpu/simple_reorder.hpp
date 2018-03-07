@@ -1872,9 +1872,9 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         for (int g = 0; g < _G; ++g) {
             for (int o = 0; o < dims[w_groups + 0] / blksize; ++o) {
                 for (int i = 0; i < dims[w_groups + 1] / blksize; ++i) {
-                    for (int h = 0; h < dims[w_groups + 2]; ++h) {
-                        for (int w = 0; w < dims[w_groups + 3]; ++w) {
-                            for (int d = 0; d < dims[w_groups + 4]; ++d) {
+                    for (int d = 0; d < dims[w_groups + 2]; ++d) {
+                        for (int h = 0; h < dims[w_groups + 3]; ++h) {
+                            for (int w = 0; w < dims[w_groups + 4]; ++w) {
                                 auto i_ptr = &input[input_d.blk_off<!w_groups>(g,
                                         o, i, d, h, w)];
                                 auto o_ptr = &output[output_d.blk_off<!w_groups>(g,
