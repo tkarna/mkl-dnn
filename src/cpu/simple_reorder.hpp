@@ -188,7 +188,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 for (int w = 0; w < dims[4]; ++w) {
 #                   pragma omp simd
                     for (int c = 0; c < dims[1]; ++c) {
-                        o[c * os[1] + w] = data_t<type_o>(i[w * is[4] + c]);                            
+                        o[c * os[1] + w] = data_t<type_o>(i[w * is[4] + c]);
                     }
                 }
             }
@@ -213,8 +213,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     typename utils::enable_if<
-        // fmt_i == ncdhw && (fmt_o == nChw8c || fmt_o == nCdhw16c)
-        fmt_i == ncdhw && (fmt_o == nCdhw16c)
+        (fmt_i == ncdhw && fmt_o == nCdhw16c) ||
+        (fmt_i == oidhw && fmt_o == oIdhw16i)
     >::type>
 {
     SIMPLE_IS_APPLICABLE(false);
