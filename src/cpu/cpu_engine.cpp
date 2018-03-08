@@ -55,6 +55,7 @@
 #include "cpu/jit_avx512_common_convolution3D.hpp"
 #include "cpu/cpu_convolution3D_nCdhw16c.hpp"
 #include "cpu/cpu_convolution3D_1ch.hpp"
+#include "cpu/cpu_convolution3D_fk1s1.hpp"
 #include "cpu/ref_convolution3D.hpp"
 
 namespace mkldnn {
@@ -95,6 +96,7 @@ static const pd_create_f cpu_impl_list[] = {
     INSTANCE(cpu_convolution3D_1ch_fwd_t<f32>),
     INSTANCE(cpu_convolution3D_1ch_bwd_data_t<f32, f32, f32, f32>),
     INSTANCE(cpu_convolution3D_1ch_bwd_weights_t<f32, f32, f32, f32>),
+    INSTANCE(cpu_convolution3D_fk1s1_fwd_t<f32>),
     INSTANCE(ref_convolution3D_fwd_t<f32>),
     INSTANCE(ref_convolution3D_bwd_data_t<f32, f32, f32, f32>),
     INSTANCE(ref_convolution3D_bwd_weights_t<f32, f32, f32, f32>),
