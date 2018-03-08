@@ -193,7 +193,6 @@ status_t jit_avx512_common_conv3D_1ch_fwd_kernel_f32::init_conf(jit_conv_conf_t 
     return status::success;
 }
 
-
 void jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::generate()
 {
     preamble();

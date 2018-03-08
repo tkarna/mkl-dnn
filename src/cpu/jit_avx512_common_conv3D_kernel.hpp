@@ -112,50 +112,12 @@ struct jit_avx512_common_conv3D_bwd_weights_kernel_f32 : public jit_generator {
 
 private:
     using reg64_t = const Xbyak::Reg64;
-    enum {typesize = sizeof(float)};
-    static const int max_ur_w;
-
-    reg64_t param = abi_param1;
-    reg64_t reg_input = rax;
-    reg64_t reg_kernel = rdx;
-    reg64_t reg_output = rsi;
-    reg64_t b_ic = abi_not_param1;
-    reg64_t kj = r8;
-    reg64_t reg_kh  = r9;
-    reg64_t reg_ur_w_trips  = r10;
-    reg64_t reg_oj = r15;
-    reg64_t reg_ih_count = rbx;
-    reg64_t reg_tmp = r14;
-
-    inline void maybe_zero_kernel();
-    inline void compute_oh_step_unroll_ow_icblock(int ic_block_step,
-            int max_ur_w);
-    inline void oh_step_comeback_pointers();
-    inline void compute_oh_step_unroll_ow(int ic_block_step, int max_ur_w);
-    inline void compute_ic_block_step(int ur_w,
-            int pad_l, int pad_r, int ic_block_step,
-            int input_offset, int kernel_offset, int output_offset,
-            bool input_wraparound = false);
-    inline void compute_ic_block_step_fma(int ur_w,
-            int pad_l, int pad_r, int ic_block_step,
-            int input_offset, int kernel_offset, int output_offset,
-            bool input_wraparound);
-    inline void compute_ic_block_step_4fma(int ur_w,
-            int pad_l, int pad_r, int ic_block_step,
-            int input_offset, int kernel_offset, int output_offset,
-            bool input_wraparound);
-    inline void compute_oh_step_common(int ic_block_step, int max_ur_w);
-    inline void compute_oh_step_disp();
-    inline void compute_oh_loop_common();
-
-    inline bool compute_full_spat_loop();
-    inline bool flat_4ops_compute();
-
-    inline void compute_loop();
+    enum {
+        typesize = sizeof(float)
+    };
 
     void generate();
 };
-
 
 }
 }
