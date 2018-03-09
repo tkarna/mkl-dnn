@@ -51,26 +51,26 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
     const memory_desc_wrapper diff_weights_d(conf_.diff_weights_pd(0));
     const memory_desc_wrapper diff_bias_d(conf_.diff_weights_pd(1));
 
-    const int G = conf_.G();
+    // const int G = conf_.G();
     const int MB = conf_.MB();
     const int OH = conf_.OH();
     const int OW = conf_.OW();
     const int OD = conf_.OD();
     const int IH = conf_.IH();
     const int IW = conf_.IW();
-    const int ID = conf_.ID();
+    // const int ID = conf_.ID();
 
     const int NBLOCK = 16;
-    const int OCB = conf_.OC() / G / NBLOCK;
-    const int IC = conf_.IC() / G;
+    // const int OCB = conf_.OC() / G / NBLOCK;
+    // const int IC = conf_.IC() / G;
 
     const int KH = conf_.KH();
     const int KW = conf_.KW();
     const int KD = conf_.KD();
 
-    const int KSH = conf_.KSH();
-    const int KSW = conf_.KSW();
-    const int KSD = conf_.KSD();
+    // const int KSH = conf_.KSH();
+    // const int KSW = conf_.KSW();
+    // const int KSD = conf_.KSD();
 
     const int32_t max_nthr = omp_get_max_threads();
     diff_wei_data_t private_weights[KD*KH*KW][max_nthr][NBLOCK] __attribute__((aligned(64)));
@@ -86,13 +86,13 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
         const size_t OHBLOCK = 32;
         const size_t OWBLOCK = 32;
 #       pragma omp for collapse(3)
-        for (size_t odb = 0; odb < OD; odb += ODBLOCK)
+        for (size_t odb = 0; odb < (size_t)OD; odb += ODBLOCK)
         {
-            for (size_t ohb = 0; ohb < OH; ohb += OHBLOCK)
+            for (size_t ohb = 0; ohb < (size_t)OH; ohb += OHBLOCK)
             {
-                for (size_t owb = 0; owb < OW; owb += OWBLOCK)
+                for (size_t owb = 0; owb < (size_t)OW; owb += OWBLOCK)
                 {
-                    jit_decomp decomp = { MB, std::min(ODBLOCK, OD - odb), std::min(OHBLOCK, OH - ohb), std::min(OWBLOCK, OW - owb) };
+                    jit_decomp decomp = {(size_t)MB, std::min(ODBLOCK, (size_t)(OD - (int)odb)), std::min(OHBLOCK, (size_t)(OH - (int)ohb)), std::min(OWBLOCK, (size_t)(OW - (int)owb)) };
                     kernel(&diff_dst[odb*OH*OW*NBLOCK + ohb*OW*NBLOCK + owb*NBLOCK], &src[odb*IH*IW + ohb*IW + owb], &private_weights[0][tid][0], &private_bias[tid][0], &decomp);
                 }
             }
