@@ -2141,7 +2141,6 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     static status_t execute(const cpu_reorder_pd_t *pd,
         const data_t<type_i> *input, data_t<type_o> *output) {
         DECLARE_COMMON_PARAMS();
-        printf(" ---> calling generic reorder 1!\n");
 
         assert(input_d.is_dense());
 
@@ -2242,7 +2241,6 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     static status_t execute(const cpu_reorder_pd_t *pd,
         const data_t<type_i> *input, data_t<type_o> *output) {
         DECLARE_COMMON_PARAMS();
-        printf(" ---> calling generic reorder 2!\n");
 
         input += input_d.blk_off(0);
         output += output_d.blk_off(0);
@@ -2341,7 +2339,6 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     static status_t execute(const cpu_reorder_pd_t *pd,
         const data_t<type_i> *input, data_t<type_o> *output) {
         DECLARE_COMMON_PARAMS();
-        printf(" ---> calling generic reorder 3!\n");
 
         const size_t nelems = input_d.nelems();
 
