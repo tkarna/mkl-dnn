@@ -1191,6 +1191,9 @@ int main(int argc, char **argv) {
         success = success && test_full(1, {12, 12, 12}, {2, 2, 2}, 64, 128, {1, 1, 1}, {0, 0, 0}, true);
         success = success && test_full(1, {11, 11, 11}, {2, 2, 2}, 128, 128, {1, 1, 1}, {0, 0, 0}, true);
 
+        // cosmoflow layers (smaller problem size)
+        success = success && test_full(1, {64, 64, 64}, {3, 3, 3}, 1, 16, {1, 1, 1}, {0, 0, 0}, true);
+
         // medical imaging layers
         // NOTE these take a while to run
         // success = success && test_full(1, {336, 304, 400}, {3, 5, 5}, 1, 32, {1, 1, 1}, {0, 0, 0}, true);
