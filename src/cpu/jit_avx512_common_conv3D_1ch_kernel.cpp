@@ -70,11 +70,16 @@ void jit_avx512_common_conv3D_1ch_fwd_kernel_f32::common::genkernel(jit_conv_con
 
     // NOTE no specialization for 4fma for now
     assert(jcp.ver == ver_fma || jcp.ver == ver_4fma);
-    int icx = 0;
+
     // load next vector of weights
-    vmovups(Zmm(0), ptr[rweights + 4*icx]);
-    for (int ow = 0; ow < now; ++ow)
-        vfmadd231ps(Zmm(ow+4), Zmm(0), ptr_b[rsrcp2 + 4*ow*jcp.stride_w + 4*icx]);
+    vmovups(Zmm(0), ptr[rweights]);
+    if (jcp.stride_w == 1) {
+        for (int ow = 0; ow < now; ++ow)
+            vfmadd231ps(Zmm(ow+4), Zmm(0), ptr_b[rsrcp2 + 4*ow]);
+    } else {
+        for (int ow = 0; ow < now; ++ow)
+            vfmadd231ps(Zmm(ow+4), Zmm(0), ptr_b[rsrcp2 + 4*ow*jcp.stride_w]);
+    }
 
     add(rweights, 4*16);
     add(rsrcp2, 4);
