@@ -20,8 +20,7 @@
 #include "mkldnn.hpp"
 #include <iomanip>
 
-#include <chrono>
-typedef std::chrono::high_resolution_clock Clock;
+#include <omp.h>
 
 using namespace mkldnn;
 
@@ -109,14 +108,21 @@ void compute_pool(std::string direction,
     // create network array
     std::vector<primitive> net;
 
-    int batch_size = src_dims[0];
+    int MB = src_dims[0];
+    int IC = src_dims[1];
+    int ID = src_dims[2];
+    int IH = src_dims[3];
+    int IW = src_dims[4];
+    int OD = dst_dims[2];
+    int OH = dst_dims[3];
+    int OW = dst_dims[4];
+    int KD = kernel[0];
+    int KH = kernel[1];
+    int KW = kernel[2];
+
     std::string alg_str = pooling_alg == pooling_avg ? "avg" : "max";
     printf("Alg:%s Input %dx%dx%d kernel %dx%dx%d channels=%d bs=%d\n",
-           alg_str.c_str(),
-           src_dims[2], src_dims[3], src_dims[4],
-           kernel[0], kernel[1], kernel[2],
-           dst_dims[1], batch_size
-          );
+           alg_str.c_str(), ID, IH, IW, KD, KH, KW, IC, MB);
 
     int nruns = 50;
     net.clear();
@@ -127,29 +133,30 @@ void compute_pool(std::string direction,
     }
 
     // Execute
-    auto t1 = Clock::now();
+    double t1 = omp_get_wtime();
     stream(stream::kind::eager).submit(net).wait();
-    auto t2 = Clock::now();
+    double t2 = omp_get_wtime();
+    double elapsed = (t2 - t1)*1000.;
 
-    double elapsed = (double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-
-    // forward complexity
-    float complexity = ((float)dst_dims[2])*dst_dims[3]*dst_dims[4]*kernel[0]*kernel[1]*kernel[2]*dst_dims[1];
-    auto speed = complexity/1000./1000./1000./(elapsed/nruns)*1000.*batch_size;
-    std::cout << "Total flops: " << complexity << std::endl;
-
+    // forward complexity for avg operator
+    uint64_t nflop = MB*IC*OD*OH*OW*KD*KH*KW;;
+    uint64_t nread = MB*IC*ID*IH*IW*sizeof(float);
+    uint64_t nwrite = MB*IC*OD*OH*OW*sizeof(float);
+    uint64_t nrfo = nread + nwrite*2;
+    auto speed = (float)nflop/1000./1000./1000./(elapsed/nruns)*1000.;
+    auto bw = nrfo/1000./1000./1000./(elapsed/nruns)*1000.;
+    std::cout << "Total flops: " << (float)nflop << std::endl;
     std::cout << "Total elapsed: " << elapsed << " ms" << std::endl;
-    std::cout << "#iter: " << nruns << std::endl;
     std::cout << "Avg duration: " << elapsed/nruns << " ms" << std::endl;
-    std::cout << "GFlops/s: " << speed << std::endl;
+    std::cout << "fwd BW: " << bw << " GB/s, Perf: " << speed << " GFlops/s" << std::endl;
 
     printf("CSV,fwd,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%le,%le,%d,%le,%le\n",
            alg_str.c_str(),
            src_dims[2], src_dims[3], src_dims[4],
            kernel[0], kernel[1], kernel[2],
            strides[0], strides[1], strides[2],
-           dst_dims[1], batch_size,
-           complexity, elapsed, nruns,elapsed/nruns,complexity/1000./1000./(elapsed/nruns)*1000.*batch_size);
+           dst_dims[1], MB,
+           (double)nflop, elapsed, nruns, elapsed/nruns, speed);
 
     if (direction != "both")
         return;
@@ -201,29 +208,30 @@ void compute_pool(std::string direction,
     }
 
     // Execute
-    t1 = Clock::now();
+    t1 = omp_get_wtime();
     stream(stream::kind::eager).submit(net).wait();
-    t2 = Clock::now();
+    t2 = omp_get_wtime();
+    elapsed = (t2 - t1)*1000.;
 
-    elapsed = (double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-
-    // backward complexity
-    complexity = ((float)dst_dims[2])*dst_dims[3]*dst_dims[4]*kernel[0]*kernel[1]*kernel[2]*dst_dims[1];
-    speed = complexity/1000./1000./1000./(elapsed/nruns)*1000.*batch_size;
-    std::cout << "Total flops: " << complexity << std::endl;
-
+    // backward complexity for avg operator
+    nread = MB*IC*OD*OH*OW*sizeof(float);
+    nwrite = MB*IC*ID*IH*IW*sizeof(float);
+    nrfo = nread + nwrite*2;
+    nflop = MB*IC*OD*OH*OW*KD*KH*KW;;
+    speed = (float)nflop/1000./1000./1000./(elapsed/nruns)*1000.;
+    bw = nrfo/1000./1000./1000./(elapsed/nruns)*1000.;
+    std::cout << "Total flops: " << (float)nflop << std::endl;
     std::cout << "Total elapsed: " << elapsed << " ms" << std::endl;
-    std::cout << "#iter: " << nruns << std::endl;
     std::cout << "Avg duration: " << elapsed/nruns << " ms" << std::endl;
-    std::cout << "GFlops/s: " << speed << std::endl;
+    std::cout << "bwd BW: " << bw << " GB/s, Perf: " << speed << " GFlops/s" << std::endl;
 
     printf("CSV,bwd,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%le,%le,%d,%le,%le\n",
-        alg_str.c_str(),
-        src_dims[2], src_dims[3], src_dims[4],
-        kernel[0], kernel[1], kernel[2],
-        strides[0], strides[1], strides[2],
-        dst_dims[1], batch_size,
-        complexity, elapsed, nruns,elapsed/nruns,speed);
+           alg_str.c_str(),
+           src_dims[2], src_dims[3], src_dims[4],
+           kernel[0], kernel[1], kernel[2],
+           strides[0], strides[1], strides[2],
+           dst_dims[1], MB,
+           (double)nflop, elapsed, nruns, elapsed/nruns, speed);
 }
 
 
