@@ -318,7 +318,7 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
                         for (int oh = start_ends[2*3+0]; oh < start_ends[2*3+1]; ++oh) {
                             for (int ow = start_ends[2*4+0]; ow < start_ends[2*4+1]; ++ow) {
                                 data_t *dst_vec = (data_t *)&dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
-                                data_t *src_vec = (data_t *)&src[src_ix.off(mb, ocb, od*SD, oh*SH, ow*SW)*NBLOCK];
+                                const data_t *src_vec = (data_t *)&src[src_ix.off(mb, ocb, od*SD, oh*SH, ow*SW)*NBLOCK];
 
                                 #pragma omp simd aligned(dst_vec,src_vec)
                                 #pragma vector aligned always nontemporal
