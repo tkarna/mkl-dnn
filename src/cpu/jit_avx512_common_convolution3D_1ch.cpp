@@ -135,11 +135,8 @@ void _jit_avx512_common_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, d
                                         (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
                                 }
                             }
-                            const int id = od * KSD;
-                            const int ih = oh * KSH;
                             for (int ic = 0; ic < IC; ++ic) {
-                                int iwbase = owb*OBLOCK*KSW;
-                                jitkernel(&src[src_ix.off(mb, ic, id, ih, iwbase)],
+                                jitkernel(&src[src_ix.off(mb, ic, od*KSD, oh*KSH, owb*OBLOCK*KSW)],
                                        &weights[w_ix.off(ocb, ic, 0, 0, 0)*NBLOCK],
                                        &dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK)*NBLOCK],
                                        0 /* TODO: bias */, &nslope);
@@ -164,11 +161,8 @@ void _jit_avx512_common_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, d
                                         (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
                                 }
                             }
-                            const int id = od * KSD;
-                            const int ih = oh * KSH;
                             for (int ic = 0; ic < IC; ++ic) {
-                                int iwbase = owb*OBLOCK*KSW;
-                                jitkernelr(&src[src_ix.off(mb, ic, id, ih, iwbase)],
+                                jitkernelr(&src[src_ix.off(mb, ic, od*KSD, oh*KSH, owb*OBLOCK*KSW)],
                                        &weights[w_ix.off(ocb, ic, 0, 0, 0)*NBLOCK],
                                        &dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK)*NBLOCK],
                                        0 /* TODO: bias */, &nslope);
