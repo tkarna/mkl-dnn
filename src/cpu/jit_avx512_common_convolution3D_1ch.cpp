@@ -18,13 +18,18 @@
 #include "type_helpers.hpp"
 #include "mkldnn_traits.hpp"
 #include "math_utils.hpp"
+#include "utils.hpp"
 
 #include "jit_avx512_common_convolution3D_1ch.hpp"
 #include <iostream>
+#include <cstring>
 
 namespace mkldnn {
 namespace impl {
 namespace cpu {
+
+using namespace mkldnn::impl::utils;
+using namespace nstl;
 
 using math::saturate;
 
@@ -186,6 +191,65 @@ void _jit_avx512_common_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, d
 
 template <data_type_t src_type, data_type_t diff_wei_type,
          data_type_t diff_dst_type, data_type_t acc_type>
+struct jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
+     acc_type>::thread_info_t {
+    const src_data_t *src;
+    const diff_dst_data_t *diff_dst;
+    const diff_wei_data_t *diff_weights, *diff_bias;
+
+    int ithr;
+    int ithr_ow, ithr_oh, ithr_od, ithr_ic_b, ithr_oc_b, ithr_mb;
+
+    int img_start, img_end, img_work;
+    int oc_b_start, oc_b_end, oc_b_work;
+    int ic_b_start, ic_b_end, ic_b_work;
+    int od_start, od_end, od_work;
+    int oh_start, oh_end, oh_work;
+    int ow_start, ow_end, ow_work;
+
+    thread_info_t(const jit_avx512_common_convolution3D_1ch_bwd_weights_t *self,
+        int ithr): ithr(ithr) {
+        src = reinterpret_cast<const src_data_t *>(self->input_memory(0));
+        diff_dst = reinterpret_cast<const diff_dst_data_t *>(
+            self->input_memory(1));
+        diff_weights = reinterpret_cast<diff_wei_data_t*>(self->memory(0));
+        diff_bias = reinterpret_cast<diff_wei_data_t *>(self->memory(1));
+
+        ithr_ow = ithr % self->nthr_ow_;
+        ithr_oh = ithr / self->nthr_ow_ % self->nthr_oh_;
+        ithr_od = ithr / self->nthr_ow_ / self->nthr_oh_ % self->nthr_od_;
+        ithr_ic_b = ithr / self->nthr_ow_ / self->nthr_oh_ / self->nthr_od_ % self->nthr_ic_b_;
+        ithr_oc_b = ithr / self->nthr_ow_ / self->nthr_oh_ / self->nthr_od_ / self->nthr_ic_b_ % self->nthr_oc_b_;
+        ithr_mb = ithr / self->nthr_ow_ / self->nthr_oh_ / self->nthr_od_ / self->nthr_ic_b_ / self->nthr_oc_b_;
+
+        const auto &jcp = self->kernel_->jcp;
+
+        /* reduction dimensions */
+        balance211(jcp.mb, self->nthr_mb_, ithr_mb, img_start, img_end);
+        img_work = img_end - img_start;
+
+        balance211(jcp.od, self->nthr_od_, ithr_od, od_start, od_end);
+        od_work = od_end - od_start;
+
+        balance211(jcp.oh, self->nthr_oh_, ithr_oh, oh_start, oh_end);
+        oh_work = oh_end - oh_start;
+
+        balance211(jcp.ow, self->nthr_ow_, ithr_ow, ow_start, ow_end);
+        ow_work = ow_end - ow_start;
+
+        /* independent dimensions */
+        balance211(jcp.nb_oc, self->nthr_oc_b_, ithr_oc_b, oc_b_start,
+                oc_b_end);
+        oc_b_work = oc_b_end - oc_b_start;
+
+        balance211(jcp.nb_ic, self->nthr_ic_b_, ithr_ic_b, ic_b_start,
+                ic_b_end);
+        ic_b_work = ic_b_end - ic_b_start;
+    }
+};
+
+template <data_type_t src_type, data_type_t diff_wei_type,
+         data_type_t diff_dst_type, data_type_t acc_type>
 void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
      acc_type>::execute_backward_weights() {
     auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
@@ -206,7 +270,7 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
     const int OD = conf_.OD();
     const int IH = conf_.IH();
     const int IW = conf_.IW();
-    // const int ID = conf_.ID();
+    const int ID = conf_.ID();
 
     const int NBLOCK = 16;
     // const int OCB = conf_.OC() / G / NBLOCK;
@@ -220,33 +284,34 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
     // const int KSW = conf_.KSW();
     // const int KSD = conf_.KSD();
 
-    const int32_t max_nthr = omp_get_max_threads();
-    diff_wei_data_t private_weights[KD*KH*KW][max_nthr][NBLOCK] __attribute__((aligned(64)));
-    acc_data_t private_bias[max_nthr][NBLOCK] __attribute__((aligned(64)));
+    const auto &jcp = kernel_->jcp;
 
-    void (*kernel)(const diff_dst_data_t*,const src_data_t*,diff_wei_data_t*,diff_wei_data_t*, struct jit_decomp*) = (void (*)(const diff_dst_data_t*,const src_data_t*,diff_wei_data_t*,diff_wei_data_t*,struct jit_decomp*)) kernel_->jit_ker;
-#   pragma omp parallel
+    const int nthr_ndhw = nthr_mb_*nthr_od_*nthr_oh_*nthr_ow_;
+    assert(nthr_ndhw == nthr_);
+
+    void (*kernel)(const diff_dst_data_t*,const src_data_t*,diff_wei_data_t*,diff_wei_data_t*,struct jit_decomp*,size_t) = (void (*)(const diff_dst_data_t*,const src_data_t*,diff_wei_data_t*,diff_wei_data_t*,struct jit_decomp*,size_t)) kernel_->jit_ker;
+
+    diff_wei_data_t private_weights[KD*KH*KW][nthr_ndhw][NBLOCK] __attribute__((aligned(64)));
+    acc_data_t private_bias[nthr_ndhw][NBLOCK] __attribute__((aligned(64)));
+    #pragma omp parallel num_threads(nthr_)
     {
-        const int tid = omp_get_thread_num();
+        int ithr = omp_get_thread_num(), nthr = omp_get_num_threads();
+        assert(nthr_ == nthr);
 
-        // TODO: These numbers need to be set according to # threads
-        const size_t ODBLOCK = 32;
-        const size_t OHBLOCK = 32;
-        const size_t OWBLOCK = 32;
-#       pragma omp for collapse(3)
-        for (size_t odb = 0; odb < (size_t)OD; odb += ODBLOCK)
-        {
-            for (size_t ohb = 0; ohb < (size_t)OH; ohb += OHBLOCK)
-            {
-                for (size_t owb = 0; owb < (size_t)OW; owb += OWBLOCK)
-                {
-                    jit_decomp decomp = {(size_t)MB, std::min(ODBLOCK, (size_t)(OD - (int)odb)), std::min(OHBLOCK, (size_t)(OH - (int)ohb)), std::min(OWBLOCK, (size_t)(OW - (int)owb)) };
-                    kernel(&diff_dst[odb*OH*OW*NBLOCK + ohb*OW*NBLOCK + owb*NBLOCK], &src[odb*IH*IW + ohb*IW + owb], &private_weights[0][tid][0], &private_bias[tid][0], &decomp);
-                }
-            }
-        }
+        thread_info_t thread_info(this, ithr);
+
+        // TODO: Remove this old jit_decomp struct and use thread_info_t directly
+        size_t mb = thread_info.img_start;
+        size_t od = thread_info.od_start;
+        size_t oh = thread_info.oh_start;
+        size_t ow = thread_info.ow_start;
+        jit_decomp decomp = { thread_info.img_work, thread_info.od_work, thread_info.oh_work, thread_info.ow_work };
+        kernel(&diff_dst[mb*OD*OH*OW*NBLOCK + od*OH*OW*NBLOCK + oh*OW*NBLOCK + ow*NBLOCK], &src[mb*ID*IH*IW + od*IH*IW + oh*IW + ow], &private_weights[0][ithr][0], &private_bias[ithr][0], &decomp, nthr_ndhw);
+
+        #pragma omp barrier
 
         // TODO: Put the reduction code into a function.
+        // TODO: Investigate using an MKL-DNN reducer.
 #       pragma omp for
         for (int k = 0; k < KD*KH*KW; ++k)
         {
@@ -254,7 +319,7 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
             for (int _oc = 0; _oc < NBLOCK; ++_oc)
             {
                 acc_data_t sum = 0;
-                for (int t = 0; t < max_nthr; ++t)
+                for (int t = 0; t < nthr_ndhw; ++t)
                 {
                     sum += private_weights[k][t][_oc];
                 }
@@ -268,7 +333,7 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
             for (int _oc = 0; _oc < NBLOCK; ++_oc)
             {
                 acc_data_t sum = 0;
-                for (int t = 0; t < max_nthr; ++t)
+                for (int t = 0; t < nthr_ndhw; ++t)
                 {
                     sum += private_bias[t][_oc];
                 }
@@ -276,6 +341,85 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
             }
         }
     }
+}
+
+template <data_type_t src_type, data_type_t diff_wei_type,
+         data_type_t diff_dst_type, data_type_t acc_type>
+void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
+     acc_type>::balance() {
+    const int max_threads = omp_get_max_threads();
+    const auto &j = conf_.jcp_;
+
+    nthr_ = nthr_mb_ = nthr_oc_b_ = nthr_ic_b_ = nthr_od_ = nthr_oh_ = nthr_ow_ = 1;
+
+    auto calc_mem_cost = [=](int nthr_mb, int nthr_oc_b, int nthr_ic_b, int nthr_od, int nthr_oh, int nthr_ow)
+    {
+        // TODO: These may need tweaking depending on loop order.
+        const int src_coef = 1;
+        const int dst_coef = 1;
+        const int weight_coef = 1;
+
+        return 0
+            + 1 /* src */
+            * div_up(j.mb, nthr_mb)
+            * div_up(j.nb_ic, nthr_ic_b) * j.ic_block
+            * (div_up(j.od, nthr_od) + j.kd - 1)
+            * (div_up(j.oh, nthr_oh) + j.kh - 1)
+            * (div_up(j.ow, nthr_ow) + j.kw - 1)
+            / j.stride_d / j.stride_h / j.stride_w
+            + 1 /* dst */
+            * div_up(j.mb, nthr_mb)
+            * div_up(j.nb_oc, nthr_oc_b) * j.oc_block
+            * div_up(j.od, nthr_od)
+            * div_up(j.oh, nthr_oh)
+            * div_up(j.ow, nthr_ow)
+            + 1 /* weights */
+            * div_up(j.nb_oc, nthr_oc_b) * div_up(j.nb_ic, nthr_ic_b)
+            * j.kd * j.kh * j.kw * j.ic_block * j.oc_block;
+    };
+
+    int best_mem_cost = calc_mem_cost(nthr_mb_, nthr_oc_b_, nthr_ic_b_, nthr_od_, nthr_oh_, nthr_ow_);
+
+    /* find the best thread distribution with lowest memory cost */
+    const int nthr = max_threads;
+    const int nthr_mb_max = nstl::min(nthr, j.mb);
+    for (int nthr_mb = 1; nthr_mb <= nthr_mb_max; ++nthr_mb)
+    {
+        const int nthr_oc_b_max = nstl::min(nthr / nthr_mb, j.nb_oc);
+        for (int nthr_oc_b = 1; nthr_oc_b <= nthr_oc_b_max; ++nthr_oc_b)
+        {
+            int nthr_ic_b_max = nstl::min((nthr / nthr_mb) / nthr_oc_b, j.nb_ic);
+            for (int nthr_ic_b = 1; nthr_ic_b <= nthr_ic_b_max; ++nthr_ic_b)
+            {
+                int nthr_od_max = nstl::min(((nthr / nthr_mb) / nthr_oc_b) / nthr_ic_b, j.od);
+                for (int nthr_od = 1; nthr_od <= nthr_od_max; ++nthr_od)
+                {
+                    int nthr_oh_max = nstl::min((((nthr / nthr_mb) / nthr_oc_b) / nthr_ic_b) / nthr_od, j.oh);
+                    for (int nthr_oh = 1; nthr_oh <= nthr_oh_max; ++nthr_oh)
+                    {
+                        int nthr_ow = nstl::min(((((nthr / nthr_mb) / nthr_oc_b) / nthr_ic_b) / nthr_od) / nthr_oh, j.ow);
+                        int mem_cost = calc_mem_cost(nthr_mb, nthr_oc_b, nthr_ic_b, nthr_od, nthr_oh, nthr_ow);
+                        if (mem_cost <= best_mem_cost)
+                        {
+                            best_mem_cost = mem_cost;
+                            nthr_mb_ = nthr_mb;
+                            nthr_oc_b_ = nthr_oc_b;
+                            nthr_ic_b_ = nthr_ic_b;
+                            nthr_od_ = nthr_od;
+                            nthr_oh_ = nthr_oh;
+                            nthr_ow_ = nthr_ow;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (nthr_mb_ > max_threads/2 && nthr_mb_ < max_threads)
+        nthr_mb_ = nstl::min(j.mb, max_threads);
+
+    nthr_ = nthr_mb_ * nthr_oc_b_ * nthr_ic_b_ * nthr_od_ * nthr_oh_ * nthr_ow_;
+    assert(nthr_ <= max_threads);
 }
 
 using namespace data_type;

@@ -210,12 +210,13 @@ void jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::generate()
     const int ODB_OFFSET = MB_OFFSET + sizeof(uint64_t);
     const int OHB_OFFSET = ODB_OFFSET + sizeof(uint64_t);
     const int OWB_OFFSET = OHB_OFFSET + sizeof(uint64_t);
+    reg64_t rnthr = r9;
 
     // Loop counters.
-    reg64_t rMB = r9;
-    reg64_t rODB = r10;
-    reg64_t rOHB = r11;
-    reg64_t rOWB = r12;
+    reg64_t rMB = r10;
+    reg64_t rODB = r11;
+    reg64_t rOHB = r12;
+    reg64_t rOWB = r13;
 
     const int KT = jcp.kd * jcp.kh * jcp.kw;
 
@@ -235,6 +236,8 @@ void jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::generate()
         vpxord(bias, bias, bias);
     }
 
+    // TODO: Better multi-dimensional index stepping.
+    // TODO: Support non-unit strides.
     Label mb_loop, od_loop, oh_loop, ow_loop;
     mov(rMB, ptr[rdecomp + MB_OFFSET]);
     L(mb_loop);
@@ -268,28 +271,34 @@ void jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::generate()
                         vaddps(bias, bias, dst);
                     }
                     add(rdst, 64);
-                    add(rsrc, sizeof(float)); // TODO: Support other strides.
+                    add(rsrc, sizeof(float));
                     sub(rOWB, 1);
                     jnz(ow_loop);
                 }
-                imul(rOWB, ptr[rdecomp + OWB_OFFSET], 64); // TODO: Can we do this with fewer instructions?
+                imul(rOWB, ptr[rdecomp + OWB_OFFSET], 64);
                 sub(rdst, rOWB);
                 add(rdst, jcp.ow*64);
-                imul(rOWB, ptr[rdecomp + OWB_OFFSET], sizeof(float)); // TODO: Can we do this with fewer instructions?
+                imul(rOWB, ptr[rdecomp + OWB_OFFSET], sizeof(float));
                 sub(rsrc, rOWB);
-                add(rsrc, jcp.iw*sizeof(float)); // TODO: Support other strides.
+                add(rsrc, jcp.iw*sizeof(float));
                 sub(rOHB, 1);
                 jnz(oh_loop);
             }
-            imul(rOHB, ptr[rdecomp + OHB_OFFSET], jcp.ow*64); // TODO: Can we do this with fewer instructions?
+            imul(rOHB, ptr[rdecomp + OHB_OFFSET], jcp.ow*64);
             sub(rdst, rOHB);
             add(rdst, jcp.oh*jcp.ow*64);
-            imul(rOHB, ptr[rdecomp + OHB_OFFSET], jcp.iw*sizeof(float)); // TODO: Can we do this with fewer instructions?
+            imul(rOHB, ptr[rdecomp + OHB_OFFSET], jcp.iw*sizeof(float));
             sub(rsrc, rOHB);
-            add(rsrc, jcp.ih*jcp.iw*sizeof(float)); // TODO: Support other strides.
+            add(rsrc, jcp.ih*jcp.iw*sizeof(float));
             sub(rODB, 1);
             jnz(od_loop);
         }
+        imul(rODB, ptr[rdecomp + ODB_OFFSET], jcp.oh*jcp.ow*64);
+        sub(rdst, rODB);
+        add(rdst, jcp.od*jcp.oh*jcp.ow*64);
+        imul(rODB, ptr[rdecomp + ODB_OFFSET], jcp.ih*jcp.iw*sizeof(float));
+        sub(rsrc, rODB);
+        add(rsrc, jcp.id*jcp.ih*jcp.iw*sizeof(float));
         sub(rMB, 1);
         jnz(mb_loop);
     }
@@ -297,10 +306,12 @@ void jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::generate()
     // TODO: Saturate.
 
     // Write out the final results.
-    // TODO: A little scared about calling omp_get_max_threads() here.
+    // Weights stride is based on number of threads involved in the reduction.
+    imul(rnthr, rnthr, 64);
     for (int k = 0; k < KT; ++k)
     {
-        vmovntps(ptr[rweights + k*omp_get_max_threads()*64], accum[k]);
+        vmovntps(ptr[rweights], accum[k]);
+        add(rweights, rnthr);
     }
     if (jcp.with_bias)
     {
@@ -335,8 +346,6 @@ status_t jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::init_conf(
     jcp.ngroups = 1;
 
     jcp.mb = src_d.dims()[0];
-    if (jcp.mb != 1)
-        return status::unimplemented;
 
     jcp.oc = diff_dst_d.dims()[1];
     jcp.ic = src_d.dims()[1];
@@ -349,20 +358,13 @@ status_t jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::init_conf(
     jcp.oh = diff_dst_d.dims()[3];
     jcp.ow = diff_dst_d.dims()[4];
 
-    // TODO: Remove this check.
-    // Current thread decomposition is lazy and doesn't work for all problem sizes.
-    if (jcp.od != 126 || jcp.oh != 126 || jcp.ow != 126 || omp_get_max_threads() != 64)
-    {
-        return status::unimplemented;
-    }
-
     jcp.kd = diff_weights_d.dims()[2];
     jcp.kh = diff_weights_d.dims()[3];
     jcp.kw = diff_weights_d.dims()[4];
 
     jcp.d1_pad = cd.padding[0][0];
-    jcp.t_pad = cd.padding[0][0];
-    jcp.l_pad = cd.padding[0][1];
+    jcp.t_pad = cd.padding[0][1];
+    jcp.l_pad = cd.padding[0][2];
 
     jcp.stride_d = cd.strides[0];
     jcp.stride_h = cd.strides[1];
@@ -424,6 +426,7 @@ status_t jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::init_conf(
 
     jcp.ver = ver_fma;
     jcp.ic_block = 1;
+    jcp.nb_ic = 1;
     jcp.src_fmt = src_d.format();
 
     return status::success;
