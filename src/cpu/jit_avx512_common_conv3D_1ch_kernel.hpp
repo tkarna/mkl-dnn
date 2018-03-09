@@ -27,6 +27,52 @@ namespace mkldnn {
 namespace impl {
 namespace cpu {
 
+struct jit_avx512_common_conv3D_1ch_fwd_kernel_f32
+{
+    struct common : public jit_generator {
+        void genkernel(jit_conv_conf_t &jcp, int nocw);
+        const unsigned char *jit_ker;
+    };
+    struct kernel_t : common {
+        kernel_t(jit_conv_conf_t &jcp)
+        {
+            genkernel(jcp, 28);
+            jit_ker = getCode();
+        }
+    };
+    struct kernelrem_t: common {
+        kernelrem_t(jit_conv_conf_t &jcp)
+        {
+            genkernel(jcp, jcp.ow % 28);
+            jit_ker = getCode();
+        }
+    };
+    jit_avx512_common_conv3D_1ch_fwd_kernel_f32(jit_conv_conf_t ajcp) : jcp(ajcp)
+    {
+        kernel_ = new kernel_t(jcp);
+        kernelrem_ = new kernelrem_t(jcp);
+    }
+    ~jit_avx512_common_conv3D_1ch_fwd_kernel_f32()
+    {
+        delete kernel_;
+        delete kernelrem_;
+    }
+
+    static status_t init_conf(jit_conv_conf_t &jcp,
+            const convolution_desc_t &cd,
+            cpu_memory_t::pd_t &src_pd,
+            cpu_memory_t::pd_t &weights_pd,
+            cpu_memory_t::pd_t &dst_pd,
+            cpu_memory_t::pd_t &bias_pd,
+            const primitive_attr_t &attr,
+            bool with_relu = false,
+            float relu_negative_slope = 0.);
+
+    jit_conv_conf_t jcp;
+    kernel_t *kernel_;
+    kernelrem_t *kernelrem_;
+};
+
 struct jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32 : public jit_generator {
 
     jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32(jit_conv_conf_t ajcp)

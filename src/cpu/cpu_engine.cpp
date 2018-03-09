@@ -89,6 +89,7 @@ using namespace mkldnn::impl::data_type;
 #define INSTANCE(...) &primitive_desc_t::create<__VA_ARGS__::pd_t>
 static const pd_create_f cpu_impl_list[] = {
 
+    INSTANCE(jit_avx512_common_convolution3D_1ch_fwd_t<f32>),
     INSTANCE(jit_avx512_common_convolution3D_1ch_bwd_weights_t<f32, f32, f32, f32>),
     INSTANCE(jit_avx512_common_convolution3D_fwd_t<f32>),
 //     INSTANCE(jit_avx512_common_convolution3D_bwd_data_t<f32, f32, f32, f32>),

@@ -31,6 +31,164 @@ using namespace mkldnn::impl::memory_format;
 using namespace mkldnn::impl::utils;
 using namespace Xbyak;
 
+void jit_avx512_common_conv3D_1ch_fwd_kernel_f32::common::genkernel(jit_conv_conf_t &jcp, int now)
+{
+    // Arguments
+    const Reg64 rsrc = rdi;
+    const Reg64 rweights = rsi;
+    const Reg64 rdst = rdx;
+
+    // loop counters
+    Reg64 rKD = r8;
+    Reg64 rKH = r9;
+    Reg64 rKW = rax;
+
+    // src pointers
+    Reg64 rsrcp1 = r10;
+    Reg64 rsrcp2 = r11;
+
+    // increments
+    int incIW = jcp.iw * 4;
+    int incIWIH = incIW * jcp.ih;
+
+    // load the outputs
+    for (int ow = 0; ow < now;++ow)
+        vmovups(Zmm(ow+4), ptr[rdst + ow*4*16]);
+
+    // loops
+    Label kd_loop, kh_loop, kw_loop;
+    mov(rKD, jcp.kd);
+    L(kd_loop);
+    mov(rsrcp1, rsrc);
+    add(rsrc, incIWIH);
+    mov(rKH, jcp.kh);
+    L(kh_loop);
+    mov(rsrcp2, rsrcp1);
+    add(rsrcp1, incIW);
+    mov(rKW, jcp.kw);
+    L(kw_loop);
+
+    // NOTE no specialization for 4fma for now
+    assert(jcp.ver == ver_fma || jcp.ver == ver_4fma);
+    int icx = 0;
+    // load next vector of weights
+    vmovups(Zmm(0), ptr[rweights + 4*icx]);
+    for (int ow = 0; ow < now; ++ow)
+        vfmadd231ps(Zmm(ow+4), Zmm(0), ptr_b[rsrcp2 + 4*ow*jcp.stride_w + 4*icx]);
+
+    add(rweights, 4*16);
+    add(rsrcp2, 4);
+    sub(rKW, 1);
+    jnz(kw_loop);
+    sub(rKH, 1);
+    jnz(kh_loop);
+    sub(rKD, 1);
+    jnz(kd_loop);
+
+    for (int ow = 0; ow < now; ++ow)
+        vmovups(ptr[rdst + ow*64], Zmm(ow+4));
+
+    ret();
+}
+
+status_t jit_avx512_common_conv3D_1ch_fwd_kernel_f32::init_conf(jit_conv_conf_t &jcp,
+            const convolution_desc_t &cd, cpu_memory_t::pd_t &src_pd,
+            cpu_memory_t::pd_t &weights_pd, cpu_memory_t::pd_t &dst_pd,
+            cpu_memory_t::pd_t &bias_pd, const primitive_attr_t &attr,
+            bool with_relu, float relu_negative_slope)
+{
+    using namespace prop_kind;
+
+    if (!mayiuse(avx512_common))
+        return status::unimplemented;
+
+    const memory_desc_wrapper src_d(&src_pd);
+    const memory_desc_wrapper weights_d(&weights_pd);
+    const memory_desc_wrapper dst_d(&dst_pd);
+    const memory_desc_wrapper bias_d(&bias_pd);
+
+    // const int regs = 28;
+    // const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
+
+    // we don't understand groups for 3D conv
+    assert(!with_groups);
+
+    jcp = zero<decltype(jcp)>();
+    jcp.ngroups = 1;
+    jcp.prop_kind = cd.prop_kind;
+
+    jcp.mb = src_d.dims()[0];
+    jcp.oc = dst_d.dims()[1];
+    jcp.ic = src_d.dims()[1];
+
+    jcp.id = src_d.dims()[2];
+    jcp.ih = src_d.dims()[3];
+    jcp.iw = src_d.dims()[4];
+
+    jcp.od = dst_d.dims()[2];
+    jcp.oh = dst_d.dims()[3];
+    jcp.ow = dst_d.dims()[4];
+
+    jcp.kd = weights_d.dims()[2];
+    jcp.kh = weights_d.dims()[3];
+    jcp.kw = weights_d.dims()[4];
+
+
+    jcp.stride_d = cd.strides[0];
+    jcp.stride_h = cd.strides[1];
+    jcp.stride_w = cd.strides[2];
+
+    jcp.d1_pad = cd.padding[0][0];
+    jcp.t_pad = cd.padding[0][1];
+    jcp.l_pad = cd.padding[0][2];
+    jcp.src_fmt = src_d.format();
+    jcp.with_relu = with_relu;
+    jcp.relu_negative_slope = relu_negative_slope;
+    jcp.ur_h = 1;
+
+    jcp.dilate_d = cd.dilates[0];
+    jcp.dilate_h = cd.dilates[1];
+    jcp.dilate_w = cd.dilates[2];
+    if (jcp.dilate_d != 0 || jcp.dilate_h != 0 || jcp.dilate_w != 0)
+        return status::unimplemented;
+
+    if (dst_d.format() == any)
+        CHECK(dst_pd.set_format(nCdhw16c));
+    if (dst_d.format() != nCdhw16c)
+        return status::unimplemented;
+
+    if (src_d.format() == any)
+        CHECK(src_pd.set_format(ncdhw));
+    if (src_d.format() != ncdhw)
+        return status::unimplemented;
+
+    if (weights_d.format() == any)
+        CHECK(weights_pd.set_format(Oidhw16o));
+    if (weights_d.format() != Oidhw16o)
+        return status::unimplemented;
+
+    jcp.with_bias = cd.bias_desc.format != memory_format::undef;
+    if (jcp.with_bias) {
+        if (bias_d.format() == any)
+            CHECK(bias_pd.set_format(x));
+        if (bias_d.format() != x)
+            return status::unimplemented;
+    }
+
+    jcp.typesize_in = sizeof(float);
+    jcp.typesize_out = sizeof(float);
+
+    if (mayiuse(avx512_mic_4ops))
+        jcp.ver = ver_4fma;
+    else if (mayiuse(avx512_common))
+        jcp.ver = ver_fma;
+    else
+        return status::unimplemented;
+
+    return status::success;
+}
+
+
 void jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32::generate()
 {
     preamble();
