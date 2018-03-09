@@ -91,10 +91,6 @@ void _jit_avx512_common_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, d
     const int KSW = conf_.KSW();
     const int KSD = conf_.KSD();
 
-    const int padT = conf_.padT();
-    const int padL = conf_.padL();
-    const int padD1 = conf_.padD1();
-
     auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
     auto bias = reinterpret_cast<const char *>(this->input_memory(2));
@@ -139,10 +135,10 @@ void _jit_avx512_common_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, d
                                         (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
                                 }
                             }
-                            const int id = od * KSD - padD1;
-                            const int ih = oh * KSH - padT;
+                            const int id = od * KSD;
+                            const int ih = oh * KSH;
                             for (int ic = 0; ic < IC; ++ic) {
-                                int iwbase = owb*OBLOCK*KSW - padL;
+                                int iwbase = owb*OBLOCK*KSW;
                                 jitkernel(&src[src_ix.off(mb, ic, id, ih, iwbase)],
                                        &weights[w_ix.off(ocb, ic, 0, 0, 0)*NBLOCK],
                                        &dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK)*NBLOCK],
@@ -168,10 +164,10 @@ void _jit_avx512_common_convolution3D_1ch_fwd_t<with_relu, src_type, wei_type, d
                                         (bias) ? get_bias((g*OCB + ocb)*NBLOCK + _oc) : (acc_data_t)0;
                                 }
                             }
-                            const int id = od * KSD - padD1;
-                            const int ih = oh * KSH - padT;
+                            const int id = od * KSD;
+                            const int ih = oh * KSH;
                             for (int ic = 0; ic < IC; ++ic) {
-                                int iwbase = owb*OBLOCK*KSW - padL;
+                                int iwbase = owb*OBLOCK*KSW;
                                 jitkernelr(&src[src_ix.off(mb, ic, id, ih, iwbase)],
                                        &weights[w_ix.off(ocb, ic, 0, 0, 0)*NBLOCK],
                                        &dst[dst_ix.off(mb, ocb, od, oh, owb*OBLOCK)*NBLOCK],

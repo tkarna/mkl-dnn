@@ -64,6 +64,7 @@ struct _jit_avx512_common_convolution3D_1ch_fwd_t: public cpu_primitive_t {
                 && this->cdesc_().dst_desc.dims[1] % 16 == 0
                 && utils::one_of(this->cdesc_().src_desc.format, memory_format::ncdhw, memory_format::any)
                 && utils::one_of(this->cdesc_().dst_desc.format, memory_format::nCdhw16c, memory_format::any)
+                && padT() == 0 && padL() == 0 && padD1() == 0
                 && src_type == data_type::f32
                 && dst_type == data_type::f32
                 && wei_type == data_type::f32
