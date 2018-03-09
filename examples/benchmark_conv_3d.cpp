@@ -397,7 +397,7 @@ bool assert_bwd_convolution(const int nbatch, const int in_channels, const int o
     float complexity = 2.0*((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
     std::cout << "flops: " << complexity << "\n";
 
-    const int ntime = 10;
+    const int ntime = 30;
     if (dst_needs_reorder) {
         printf("Running dst reorder\n");
         auto op = reorder(conv_user_dst_memory, conv_dst_memory);
