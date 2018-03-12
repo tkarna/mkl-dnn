@@ -25,7 +25,7 @@
 #include <limits>
 #include <cmath>
 
-#include "avx512_common_pooling3D.hpp"
+#include "jit_avx512_common_pooling3D.hpp"
 
 class MultiviewOffset {
     /* Computes offsets for multidimensional arrays */
@@ -213,7 +213,7 @@ namespace impl {
 namespace cpu {
 
 template <data_type_t data_type, data_type_t acc_type>
-void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
+void jit_avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
     using namespace alg_kind;
     using namespace prop_kind;
     auto alg = conf_.desc()->alg_kind;
@@ -345,7 +345,7 @@ void avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
 }
 
 template <data_type_t data_type, data_type_t acc_type>
-void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
+void jit_avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
     using namespace alg_kind;
 
     auto diff_dst = reinterpret_cast<const data_t *>(this->input_memory(0));
@@ -473,15 +473,15 @@ void avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() {
     }
 }
 
-template struct avx512_common_pooling3D_fwd_t<data_type::f32>;
-// template struct avx512_common_pooling3D_fwd_t<data_type::s32>;
-// template struct avx512_common_pooling3D_fwd_t<data_type::s16, data_type::s32>;
-// template struct avx512_common_pooling3D_fwd_t<data_type::s8, data_type::s32>;
-// template struct avx512_common_pooling3D_fwd_t<data_type::u8, data_type::s32>;
+template struct jit_avx512_common_pooling3D_fwd_t<data_type::f32>;
+// template struct jit_avx512_common_pooling3D_fwd_t<data_type::s32>;
+// template struct jit_avx512_common_pooling3D_fwd_t<data_type::s16, data_type::s32>;
+// template struct jit_avx512_common_pooling3D_fwd_t<data_type::s8, data_type::s32>;
+// template struct jit_avx512_common_pooling3D_fwd_t<data_type::u8, data_type::s32>;
 
-template struct avx512_common_pooling3D_bwd_t<data_type::f32>;
-// template struct avx512_common_pooling3D_bwd_t<data_type::s32>;
-// template struct avx512_common_pooling3D_bwd_t<data_type::s16, data_type::s32>;
+template struct jit_avx512_common_pooling3D_bwd_t<data_type::f32>;
+// template struct jit_avx512_common_pooling3D_bwd_t<data_type::s32>;
+// template struct jit_avx512_common_pooling3D_bwd_t<data_type::s16, data_type::s32>;
 
 }
 }

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AVX512_COMMON_POOLING3D_HPP
-#define CPU_AVX512_COMMON_POOLING3D_HPP
+#ifndef JIT_AVX512_COMMON_POOLING3D_HPP
+#define JIT_AVX512_COMMON_POOLING3D_HPP
 
 #include <assert.h>
 
@@ -31,14 +31,14 @@ namespace impl {
 namespace cpu {
 
 template <impl::data_type_t data_type, impl::data_type_t acc_type = data_type>
-struct avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
+struct jit_avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
     struct pd_t: public cpu_pooling_fwd_pd_t {
         pd_t(engine_t *engine, const pooling_desc_t *adesc,
                 const primitive_attr_t *attr,
                 const pooling_fwd_pd_t *hint_fwd_pd)
             : cpu_pooling_fwd_pd_t(engine, adesc, attr, hint_fwd_pd) {}
 
-        DECLARE_COMMON_PD_T(avx512_common_pooling3D_fwd_t);
+        DECLARE_COMMON_PD_T(jit_avx512_common_pooling3D_fwd_t);
 
         virtual status_t init() override {
             using namespace prop_kind;
@@ -106,7 +106,7 @@ struct avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
 
     };
 
-    avx512_common_pooling3D_fwd_t(const pd_t *pd, const input_vector &inputs,
+    jit_avx512_common_pooling3D_fwd_t(const pd_t *pd, const input_vector &inputs,
             const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
 
@@ -124,14 +124,14 @@ private:
 };
 
 template <impl::data_type_t data_type, impl::data_type_t acc_type = data_type>
-struct avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
+struct jit_avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
     struct pd_t: public cpu_pooling_bwd_pd_t {
         pd_t(engine_t *engine, const pooling_desc_t *adesc,
              const primitive_attr_t *attr,
              const pooling_fwd_pd_t *hint_fwd_pd)
             : cpu_pooling_bwd_pd_t(engine, adesc, attr, hint_fwd_pd) {}
 
-        DECLARE_COMMON_PD_T(avx512_common_pooling3D_bwd_t);
+        DECLARE_COMMON_PD_T(jit_avx512_common_pooling3D_bwd_t);
 
         virtual status_t init() override {
             using namespace prop_kind;
@@ -198,7 +198,7 @@ struct avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
 
     };
 
-    avx512_common_pooling3D_bwd_t(const pd_t *pd, const input_vector &inputs,
+    jit_avx512_common_pooling3D_bwd_t(const pd_t *pd, const input_vector &inputs,
                       const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
     typedef typename prec_traits<data_type>::type data_t;
