@@ -216,7 +216,6 @@ template <data_type_t data_type, data_type_t acc_type>
 void jit_avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
     using namespace alg_kind;
     using namespace prop_kind;
-    auto alg = conf_.desc()->alg_kind;
 
     auto src = reinterpret_cast<const data_t *>(this->input_memory(0));
     auto dst = reinterpret_cast<data_t *>(this->memory(0));
@@ -240,10 +239,6 @@ void jit_avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
     const int IW = conf_.IW();
     const int ID = conf_.ID();
 
-    const int KH = conf_.KH();
-    const int KW = conf_.KW();
-    const int KD = conf_.KD();
-
     const int SH = conf_.KSH();
     const int SW = conf_.KSW();
     const int SD = conf_.KSD();
@@ -251,90 +246,30 @@ void jit_avx512_common_pooling3D_fwd_t<data_type, acc_type>::execute_forward() {
     auto src_ix = MultiviewOffset(MB, OCB, ID, IH, IW);
     auto dst_ix = MultiviewOffset(MB, OCB, OD, OH, OW);
 
-    const int idstride = IH*IW*NBLOCK;
-    const int ihstride = IW*NBLOCK;
-    const int iwstride = NBLOCK;
-
     const int nthreads = omp_get_max_threads();
+
+    void (*kernel)(const data_t*, const data_t*) = (void (*)(const data_t*, const data_t*)) kernel_->jit_ker;
 
     std::vector<uint32_t> decomp(best_decomp(nthreads, std::vector<uint32_t>(3,1)));
     while(decomp.size() < 5) {
         decomp.insert(decomp.begin(), 1);
     }
 
-    if (alg == pooling_max) {
-        #pragma omp parallel
-        {
-            const int tid = omp_get_thread_num();
-            int start_ends[2*5];
-            std::vector<int> dims = {MB, OCB, OD, OH, OW};
-            multi_decomp(start_ends, tid, nthreads, 5, &dims[0], &decomp[0]);
+    #pragma omp parallel
+    {
+        const int tid = omp_get_thread_num();
+        int start_ends[2*5];
+        std::vector<int> dims = {MB, OCB, OD, OH, OW};
+        multi_decomp(start_ends, tid, nthreads, 5, &dims[0], &decomp[0]);
 
-            for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
-                for (int ocb = start_ends[2*1+0]; ocb < start_ends[2*1+1]; ++ocb) {
-                    for (int od = start_ends[2*2+0]; od < start_ends[2*2+1]; ++od) {
-                        for (int oh = start_ends[2*3+0]; oh < start_ends[2*3+1]; ++oh) {
-                            for (int ow = start_ends[2*4+0]; ow < start_ends[2*4+1]; ++ow) {
-                                data_t *dst_vec = (data_t *)&dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
-                                data_t *src_vec = (data_t *)&src[src_ix.off(mb, ocb, od*SD, oh*SH, ow*SW)*NBLOCK];
-                                #pragma omp simd aligned(src_vec, dst_vec)
-                                #pragma vector aligned always nontemporal
-                                for (int oc = 0; oc < NBLOCK; ++oc) {
-                                    float ov =  std::numeric_limits<float>::min();
-                                    // int argmax = 0;
-                                    for (int kd = 0; kd < KD; ++kd) {
-                                        for (int kh = 0; kh < KH; ++kh) {
-                                            for (int kw = 0; kw < KW; ++kw) {
-                                                const int ioffs = kd*idstride + kh*ihstride + kw*iwstride;
-                                                if (src_vec[oc + ioffs] > ov) {
-                                                    ov = src_vec[oc + ioffs];
-                                                    // argmax = kd*KH*KW + kh*KW + kw;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    dst_vec[oc] = ov;
-                                    // loutam[oc] = argmax;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-    } else {
-        const float denom = 1.0f/(KD*KW*KH);
-        #pragma omp parallel
-        {
-            const int tid = omp_get_thread_num();
-            int start_ends[2*5];
-            std::vector<int> dims = {MB, OCB, OD, OH, OW};
-            multi_decomp(start_ends, tid, nthreads, 5, &dims[0], &decomp[0]);
-
-            for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
-                for (int ocb = start_ends[2*1+0]; ocb < start_ends[2*1+1]; ++ocb) {
-                    for (int od = start_ends[2*2+0]; od < start_ends[2*2+1]; ++od) {
-                        for (int oh = start_ends[2*3+0]; oh < start_ends[2*3+1]; ++oh) {
-                            for (int ow = start_ends[2*4+0]; ow < start_ends[2*4+1]; ++ow) {
-                                data_t *dst_vec = (data_t *)&dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
-                                const data_t *src_vec = (data_t *)&src[src_ix.off(mb, ocb, od*SD, oh*SH, ow*SW)*NBLOCK];
-
-                                #pragma omp simd aligned(dst_vec,src_vec)
-                                #pragma vector aligned always nontemporal
-                                for (int oc = 0; oc < NBLOCK; ++oc) {
-                                    acc_data_t dst = 0;
-                                    for (int kd = 0; kd < KD; ++kd) {
-                                        for (int kh = 0; kh < KH; ++kh) {
-                                            for (int kw = 0; kw < KW; ++kw) {
-                                                const int ioffs = kd*idstride + kh*ihstride + kw*iwstride;
-                                                dst += src_vec[oc + ioffs];
-                                            }
-                                        }
-                                    }
-                                    dst_vec[oc] = math::out_round<data_t>((float)dst*denom);
-                                }
-                            }
+        for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
+            for (int ocb = start_ends[2*1+0]; ocb < start_ends[2*1+1]; ++ocb) {
+                for (int od = start_ends[2*2+0]; od < start_ends[2*2+1]; ++od) {
+                    for (int oh = start_ends[2*3+0]; oh < start_ends[2*3+1]; ++oh) {
+                        for (int ow = start_ends[2*4+0]; ow < start_ends[2*4+1]; ++ow) {
+                            data_t *dst_vec = (data_t *)&dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
+                            const data_t *src_vec = (data_t *)&src[src_ix.off(mb, ocb, od*SD, oh*SH, ow*SW)*NBLOCK];
+                            kernel(dst_vec, src_vec);
                         }
                     }
                 }
