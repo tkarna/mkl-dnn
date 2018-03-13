@@ -113,10 +113,12 @@ status_t jit_avx512_common_conv3D_1ch_fwd_kernel_f32::init_conf(jit_conv_conf_t 
     const memory_desc_wrapper bias_d(&bias_pd);
 
     // const int regs = 28;
-    // const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
+#ifndef NDEBUG
+    const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
 
     // we don't understand groups for 3D conv
     assert(!with_groups);
+#endif
 
     jcp = zero<decltype(jcp)>();
     jcp.ngroups = 1;
