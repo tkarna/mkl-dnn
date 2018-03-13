@@ -37,7 +37,7 @@ struct jit_avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
         pd_t(engine_t *engine, const pooling_desc_t *adesc,
                 const primitive_attr_t *attr,
                 const pooling_fwd_pd_t *hint_fwd_pd)
-            : cpu_pooling_fwd_pd_t(engine, adesc, attr, hint_fwd_pd) {}
+            : cpu_pooling_fwd_pd_t(engine, adesc, attr, hint_fwd_pd), jpp({}) {}
 
         DECLARE_COMMON_PD_T(jit_avx512_common_pooling3D_fwd_t);
 
@@ -74,7 +74,6 @@ struct jit_avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
 
             auto status = jit_avx512_common_pool3D_fwd_kernel_f32::init_conf(
                     jpp, desc_, this->src_pd_, this->dst_pd_);
-            printf("jit pooling check %d %d\n", ok, status == status::success);
             return status;
         }
 
@@ -120,7 +119,6 @@ struct jit_avx512_common_pooling3D_fwd_t: public cpu_primitive_t {
     jit_avx512_common_pooling3D_fwd_t(const pd_t *pd, const input_vector &inputs,
             const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {
-            printf("-------> calling jit pooling constructor\n");
             kernel_ = new jit_avx512_common_pool3D_fwd_kernel_f32(conf_.jpp);
         }
     ~jit_avx512_common_pooling3D_fwd_t()
@@ -148,7 +146,7 @@ struct jit_avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
         pd_t(engine_t *engine, const pooling_desc_t *adesc,
              const primitive_attr_t *attr,
              const pooling_fwd_pd_t *hint_fwd_pd)
-            : cpu_pooling_bwd_pd_t(engine, adesc, attr, hint_fwd_pd) {}
+            : cpu_pooling_bwd_pd_t(engine, adesc, attr, hint_fwd_pd), jpp({}) {}
 
         DECLARE_COMMON_PD_T(jit_avx512_common_pooling3D_bwd_t);
 
@@ -178,8 +176,13 @@ struct jit_avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
             if (desc()->alg_kind == pooling_max)
                 ws_pd_ = *(cpu_memory_t::pd_t*)hint_fwd_pd_->workspace_pd();
 
-            return status::success;
+            auto status = jit_avx512_common_pool3D_bwd_kernel_f32::init_conf(
+                    jpp, desc_, this->diff_src_pd_, this->diff_dst_pd_);
+            return status;
         }
+
+        jit_pool_conf_t jpp;
+        void *jit_ker;
 
         inline int MB() const { return desc_.diff_src_desc.dims[0]; }
         inline int C() const { return desc_.diff_src_desc.dims[1]; }
@@ -219,7 +222,13 @@ struct jit_avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
 
     jit_avx512_common_pooling3D_bwd_t(const pd_t *pd, const input_vector &inputs,
                       const output_vector &outputs)
-        : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
+        : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {
+            kernel_ = new jit_avx512_common_pool3D_bwd_kernel_f32(conf_.jpp);
+        }
+    ~jit_avx512_common_pooling3D_bwd_t()
+    {
+        delete kernel_;
+    }
     typedef typename prec_traits<data_type>::type data_t;
     typedef typename prec_traits<acc_type>::type acc_data_t;
 
@@ -231,6 +240,7 @@ struct jit_avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
 private:
     void execute_backward();
     pd_t conf_;
+    jit_avx512_common_pool3D_bwd_kernel_f32 *kernel_;
 };
 
 }

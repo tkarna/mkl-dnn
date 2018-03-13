@@ -37,9 +37,36 @@ struct jit_avx512_common_pool3D_fwd_kernel_f32 : public jit_generator {
     }
 
     static status_t init_conf(jit_pool_conf_t &jpp,
-            const pooling_desc_t &cd,
+            const pooling_desc_t &pd,
             cpu_memory_t::pd_t &src_pd,
             cpu_memory_t::pd_t &dst_pd);
+
+    jit_pool_conf_t jpp;
+    void *jit_ker;
+
+private:
+    using reg64_t = const Xbyak::Reg64;
+    enum {
+        typesize = sizeof(float),
+    };
+
+    void generate();
+
+};
+
+struct jit_avx512_common_pool3D_bwd_kernel_f32 : public jit_generator {
+
+    jit_avx512_common_pool3D_bwd_kernel_f32(jit_pool_conf_t ajpp)
+        : jpp(ajpp)
+    {
+        generate();
+        jit_ker = (void*) getCode();
+    }
+
+    static status_t init_conf(jit_pool_conf_t &jpp,
+            const pooling_desc_t &pd,
+            cpu_memory_t::pd_t &diff_src_pd,
+            cpu_memory_t::pd_t &diff_dst_pd);
 
     jit_pool_conf_t jpp;
     void *jit_ker;
