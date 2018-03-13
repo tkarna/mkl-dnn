@@ -44,6 +44,13 @@ namespace mkldnn {
 namespace impl {
 namespace cpu {
 
+struct jit_decomp
+{
+    size_t ODB;
+    size_t OHB;
+    size_t OWB;
+};
+
 using namespace mkldnn::impl::utils;
 using namespace nstl;
 
@@ -391,6 +398,8 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
 
     const int nthr_ndhw = nthr_mb_*nthr_od_*nthr_oh_*nthr_ow_;
 
+    void (*kernel)(const diff_dst_data_t*,const src_data_t*,diff_wei_data_t*,diff_wei_data_t*,struct jit_decomp*) = (void (*)(const diff_dst_data_t*,const src_data_t*,diff_wei_data_t*,diff_wei_data_t*,struct jit_decomp*)) kernel_->jit_ker;
+
     //printf("nthr = %d\n", nthr_);
     //printf("nthr_oc_b = %d, nthr_ic_b = %d, nthr_ndhw = %d\n", nthr_oc_b_, nthr_ic_b_, nthr_ndhw);
 
@@ -410,8 +419,8 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
         for (int ocb = thread_info.oc_b_start; ocb < thread_info.oc_b_end; ++ocb)
         for (int icb = thread_info.ic_b_start; icb < thread_info.ic_b_end; ++icb)
         {
-            acc_data_t dw[KD*KH*KW][NBLOCK][NBLOCK];
-            acc_data_t db[NBLOCK];
+            acc_data_t dw[KD*KH*KW][NBLOCK][NBLOCK] __attribute__((aligned(64)));
+            acc_data_t db[NBLOCK] __attribute__((aligned(64)));
             for (int _kt = 0; _kt < KD*KH*KW; ++_kt)
             {
                 #pragma unroll
@@ -438,41 +447,20 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
             for (int ohb = thread_info.oh_start; ohb < thread_info.oh_end; ohb += oh_b_)
             for (int owb = thread_info.ow_start; owb < thread_info.ow_end; owb += ow_b_)
             {
+                // TODO: Remove this old jit_decomp struct and use something better
+                jit_decomp decomp = { std::min(thread_info.od_end - odb, od_b_), std::min(thread_info.oh_end - ohb, oh_b_), std::min(thread_info.ow_end - owb, ow_b_) };
+
                 for (int kd = 0; kd < KD; ++kd)
                 for (int kh = 0; kh < KH; ++kh)
                 for (int kw = 0; kw < KW; ++kw)
                 {
-                    for (int od = odb; od < std::min(odb + od_b_, thread_info.od_end); ++od)
-                    for (int oh = ohb; oh < std::min(ohb + oh_b_, thread_info.oh_end); ++oh)
-                    for (int ow = owb; ow < std::min(owb + ow_b_, thread_info.ow_end); ++ow)
-                    {
-                        int _kt = kd*KH*KW + kh*KW + kw;
-                        // dw[_kt][_oc][_ic] += diff_dst[mb][od][oh][ow][_oc] * src[mb][od + kd][oh + kh][ow + kw][_ic];
-                        #pragma unroll_and_jam(NBLOCK)
-                        for (int _oc = 0; _oc < NBLOCK; ++_oc)
-                        {
-                            for (int _ic = 0; _ic < NBLOCK; ++_ic)
-                            {
-                                int dst_idx = mb*G*OCB*OD*OH*OW*NBLOCK + g*OCB*OD*OH*OW*NBLOCK + ocb*OD*OH*OW*NBLOCK + od*OH*OW*NBLOCK + oh*OW*NBLOCK + ow*NBLOCK + _oc;
-                                int src_idx = mb*G*ICB*ID*IH*IW*NBLOCK + g*ICB*ID*IH*IW*NBLOCK + icb*ID*IH*IW*NBLOCK + (od*KSD + kd)*IH*IW*NBLOCK + (oh*KSH + kh)*IW*NBLOCK + (ow*KSW + kw)*NBLOCK + _ic;
-                                dw[_kt][_oc][_ic] += diff_dst[dst_idx] * src[src_idx];
-                            }
-                        }
-                    }
-                }
-                if (diff_bias && icb == 0)
-                {
-                    for (int od = odb; od < std::min(odb + od_b_, thread_info.od_end); ++od)
-                    for (int oh = ohb; oh < std::min(ohb + oh_b_, thread_info.oh_end); ++oh)
-                    for (int ow = owb; ow < std::min(owb + ow_b_, thread_info.ow_end); ++ow)
-                    {
-                        #pragma omp simd
-                        for (int _oc = 0; _oc < NBLOCK; ++_oc)
-                        {
-                            int dst_idx = mb*G*OCB*OD*OH*OW*NBLOCK + g*OCB*OD*OH*OW*NBLOCK + ocb*OD*OH*OW*NBLOCK + od*OH*OW*NBLOCK + oh*OW*NBLOCK + ow*NBLOCK + _oc;
-                            db[_oc] += diff_dst[dst_idx];
-                        }
-                    }
+                    acc_data_t dummy[NBLOCK] __attribute__((aligned(64)));
+                    acc_data_t* bias_ptr = (diff_bias && icb == 0 && kw == 0 && kh == 0 && kd == 0) ? &db[0] : &dummy[0];
+                    kernel(&diff_dst[mb*G*OCB*OD*OH*OW*NBLOCK + g*OCB*OD*OH*OW*NBLOCK + ocb*OD*OH*OW*NBLOCK + odb*OH*OW*NBLOCK + ohb*OW*NBLOCK + owb*NBLOCK],
+                           &src[mb*G*ICB*ID*IH*IW*NBLOCK + g*ICB*ID*IH*IW*NBLOCK + icb*ID*IH*IW*NBLOCK + (odb*KSD + kd)*IH*IW*NBLOCK + (ohb*KSH + kh)*IW*NBLOCK + (owb*KSW + kw)*NBLOCK],
+                           &dw[kd*KH*KW+kh*KW+kw][0][0],
+                           bias_ptr,
+                           &decomp);
                 }
             } /* reduction dimensions */
 

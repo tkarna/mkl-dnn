@@ -99,7 +99,7 @@ struct jit_avx512_common_conv3D_bwd_weights_kernel_f32 : public jit_generator {
         : jcp(ajcp)
     {
         generate();
-        jit_ker = (void (*)(jit_conv_call_s *))getCode();
+        jit_ker = (void*) getCode();
     }
 
     static status_t init_conf(jit_conv_conf_t &jcp,
@@ -108,7 +108,7 @@ struct jit_avx512_common_conv3D_bwd_weights_kernel_f32 : public jit_generator {
             cpu_memory_t::pd_t &diff_bias_pd, cpu_memory_t::pd_t &diff_dst_pd);
 
     jit_conv_conf_t jcp;
-    void (*jit_ker)(jit_conv_call_s *);
+    void *jit_ker;
 
 private:
     using reg64_t = const Xbyak::Reg64;

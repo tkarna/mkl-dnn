@@ -290,7 +290,96 @@ status_t jit_avx512_common_conv3D_bwd_data_kernel_f32::init_conf(
 void jit_avx512_common_conv3D_bwd_weights_kernel_f32::generate()
 {
     preamble();
-    // TODO: Implement kernel here.
+
+    // Base pointers.
+    const reg64_t rdst = rdi;
+    const reg64_t rsrc = rsi;
+    const reg64_t rweights = rdx;
+    const reg64_t rbias = rcx;
+
+    // Decomposition.
+    reg64_t rdecomp = r8;
+    const int ODB_OFFSET = 0;
+    const int OHB_OFFSET = ODB_OFFSET + sizeof(uint64_t);
+    const int OWB_OFFSET = OHB_OFFSET + sizeof(uint64_t);
+
+    // Loop counters.
+    reg64_t rODB = r9;
+    reg64_t rOHB = r10;
+    reg64_t rOWB = r11;
+
+    // Load the accumulators with the weights for [kd][kh][kw].
+    Zmm accum[jcp.oc_block];
+    for (int oc = 0; oc < jcp.oc_block; ++oc)
+    {
+        accum[oc] = Zmm(oc);
+        vmovups(accum[oc], ptr[rweights + oc*jcp.ic_block*sizeof(float)]);
+    }
+    Zmm src = Zmm(jcp.oc_block);
+
+    // Need an additional accumulator if computing the bias.
+    Zmm bias = Zmm(jcp.oc_block + 1);
+    if (jcp.with_bias)
+    {
+        vmovups(bias, ptr[rbias]);
+    }
+
+    // Accumulate for od_b_*oh_b_*ow_b_ pixels.
+    // NB: We always compute the bias, for simplicity; caller must ensure to interpret results correctly.
+    // TODO: Better multi-dimensional index stepping.
+    Label od_loop, oh_loop, ow_loop;
+    mov(rODB, ptr[rdecomp + ODB_OFFSET]);
+    L(od_loop);
+    {
+        mov(rOHB, ptr[rdecomp + OHB_OFFSET]);
+        L(oh_loop);
+        {
+            mov(rOWB, ptr[rdecomp + OWB_OFFSET]);
+            L(ow_loop);
+            {
+                vmovups(src, ptr[rsrc]);
+                for (int oc = 0; oc < jcp.oc_block; ++oc)
+                {
+                    vfmadd231ps(accum[oc], src, ptr_b[rdst + oc*sizeof(float)]);
+                }
+                if (jcp.with_bias)
+                {
+                    vaddps(bias, bias, ptr[rdst]);
+                }
+                add(rdst, jcp.oc_block*sizeof(float));
+                add(rsrc, jcp.stride_w*jcp.ic_block*sizeof(float));
+                sub(rOWB, 1);
+                jnz(ow_loop);
+            }
+            imul(rOWB, ptr[rdecomp + OWB_OFFSET], jcp.oc_block*sizeof(float));
+            sub(rdst, rOWB);
+            add(rdst, jcp.ow*jcp.oc_block*sizeof(float));
+            imul(rOWB, ptr[rdecomp + OWB_OFFSET], jcp.stride_w*jcp.ic_block*sizeof(float));
+            sub(rsrc, rOWB);
+            add(rsrc, jcp.stride_h*jcp.iw*jcp.ic_block*sizeof(float));
+            sub(rOHB, 1);
+            jnz(oh_loop);
+        }
+        imul(rOHB, ptr[rdecomp + OHB_OFFSET], jcp.ow*jcp.oc_block*sizeof(float));
+        sub(rdst, rOHB);
+        add(rdst, jcp.oh*jcp.ow*jcp.oc_block*sizeof(float));
+        imul(rOHB, ptr[rdecomp + OHB_OFFSET], jcp.stride_h*jcp.iw*jcp.ic_block*sizeof(float));
+        sub(rsrc, rOHB);
+        add(rsrc, jcp.stride_d*jcp.ih*jcp.iw*jcp.ic_block*sizeof(float));
+        sub(rODB, 1);
+        jnz(od_loop);
+    }
+
+    // Store the accumulators back to the weights array.
+    for (int oc = 0; oc < jcp.oc_block; ++oc)
+    {
+        vmovups(ptr[rweights + oc*jcp.ic_block*sizeof(float)], accum[oc]);
+    }
+    if (jcp.with_bias)
+    {
+        vmovups(ptr[rbias], bias);
+    }
+
     postamble();
 }
 
