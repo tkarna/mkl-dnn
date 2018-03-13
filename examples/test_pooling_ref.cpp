@@ -610,7 +610,7 @@ bool test_pool_3d(std::string direction, algorithm pooling_alg,
                   std::vector<int> insize, const int channels,
                   std::vector<int> kernel, std::vector<int> strides,
                   std::vector<int> padding, const int bs=1,
-                  bool fill_with_floats=true
+                  bool fill_with_floats=true, bool print_arrays=false
                  ) {
     const int ih=insize[0], iw=insize[1], id=insize[2];
     const int kh=kernel[0], kw=kernel[1], kd=kernel[2];
@@ -624,7 +624,7 @@ bool test_pool_3d(std::string direction, algorithm pooling_alg,
     float tol = fill_with_floats ? 1e-5 : 1e-25;
     return assert_pooling_3d(direction, pooling_alg, bs, channels, ih, iw, id,
                     kh, kw, kd, oh, ow, od,
-                    sh, sw, sd, ph, pw, pd, fill_with_floats, tol, false);
+                    sh, sw, sd, ph, pw, pd, fill_with_floats, tol, print_arrays);
 }
 
 int main(int argc, char **argv) {
