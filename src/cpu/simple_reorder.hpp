@@ -502,85 +502,21 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
         auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o) {
             if (order_keep) {
-                if (alpha == 1.0 && beta == 0.0) {
 #                   pragma unroll
                     for (int C = 0; C < dims[1] / blksize; ++C) {
 #                       pragma omp simd
                         for (int c = 0; c < blksize; ++c) {
-                            o[C * os[1] + c] = qz_a1b0<data_t<type_i>,
-                                data_t<type_o>>()(i[C * blksize + c], rmode);
+                            o[C * os[1] + c] = i[C * blksize + c];
                         }
-                    }
-                } else if (alpha == 1.0) {
-#                   pragma unroll
-                    for (int C = 0; C < dims[1] / blksize; ++C) {
-#                       pragma omp simd
-                        for (int c = 0; c < blksize; ++c) {
-                            o[C * os[1] + c] = qz_a1<data_t<type_i>,
-                                data_t<type_o>>()(i[C * blksize + c],
-                                o[C * os[1] + c], beta, rmode);
-                        }
-                    }
-                } else if (beta == 0.0) {
-#                   pragma unroll
-                    for (int C = 0; C < dims[1] / blksize; ++C) {
-#                       pragma omp simd
-                        for (int c = 0; c < blksize; ++c) {
-                            o[C * os[1] + c] = qz_b0<data_t<type_i>,
-                                data_t<type_o>>()(i[C * blksize + c], alpha, rmode);
-                        }
-                    }
-                } else {
-#                   pragma unroll
-                    for (int C = 0; C < dims[1] / blksize; ++C) {
-#                       pragma omp simd
-                        for (int c = 0; c < blksize; ++c) {
-                            o[C * os[1] + c] = qz<data_t<type_i>,
-                                data_t<type_o>>()(i[C * blksize + c],
-                                o[C * os[1] + c], alpha, beta, rmode);
-                        }
-                    }
-                }
+                }             
             } else {
-                if (alpha == 1.0 && beta == 0.0) {
 #                   pragma unroll
                     for (int C = 0; C < dims[1] / blksize; ++C) {
 #                       pragma omp simd
                         for (int c = 0; c < blksize; ++c) {
-                            o[C * blksize + c] = qz_a1b0<data_t<type_i>,
-                                data_t<type_o>>()(i[C * is[1] + c], rmode);
+                            o[C * blksize + c] = i[C * is[1] + c];
                         }
                     }
-                } else if (alpha == 1.0) {
-#                   pragma unroll
-                    for (int C = 0; C < dims[1] / blksize; ++C) {
-#                       pragma omp simd
-                        for (int c = 0; c < blksize; ++c) {
-                            o[C * blksize + c] = qz_a1<data_t<type_i>,
-                                data_t<type_o>>()(i[C * is[1] + c],
-                                o[C * blksize + c], beta, rmode);
-                        }
-                    }
-                } else if (beta == 0.0) {
-#                   pragma unroll
-                    for (int C = 0; C < dims[1] / blksize; ++C) {
-#                       pragma omp simd
-                        for (int c = 0; c < blksize; ++c) {
-                            o[C * blksize + c] = qz_b0<data_t<type_i>,
-                                data_t<type_o>>()(i[C * is[1] + c], alpha, rmode);
-                        }
-                    }
-                } else {
-#                   pragma unroll
-                    for (int C = 0; C < dims[1] / blksize; ++C) {
-#                       pragma omp simd
-                        for (int c = 0; c < blksize; ++c) {
-                            o[C * blksize + c] = qz<data_t<type_i>,
-                                data_t<type_o>>()(i[C * is[1] + c],
-                               o[C * blksize + c], alpha, beta, rmode);
-                        }
-                    }
-                }
             }
         };
 
@@ -1712,21 +1648,9 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         constexpr int blksize = 16;
 
         auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o) {
-            if (alpha == 1.0 && beta == 0.0) {
-#               pragma omp simd
-                for (int oc = 0; oc < blksize; ++oc) {
-                    if (order_keep) {
-                        o[oc] = data_t<type_o>(i[oc]);
-                    } else {
-                        o[oc] = data_t<type_o>(i[oc]);
-                    }
-                }
-            } else {
-#               pragma omp simd
-                for (int oc = 0; oc < blksize; ++oc) {
-                    o[oc] = data_t<type_o>(alpha * i[oc]
-                                    + (beta ? beta * o[oc] : 0));
-                }
+#       pragma omp simd
+            for (int oc = 0; oc < blksize; ++oc) {
+                o[oc] = data_t<type_o>(i[oc]);
             }
         };
 
