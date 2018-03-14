@@ -23,6 +23,7 @@
 #include "nstl.hpp"
 
 #include <limits>
+#include <cmath>
 
 #include "avx512_common_pooling3D.hpp"
 
