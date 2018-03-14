@@ -126,10 +126,12 @@ status_t jit_avx512_common_conv3D_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     const memory_desc_wrapper bias_d(&bias_pd);
 
     // const int regs = 28;
-    // const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
+#ifndef NDEBUG
+    const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
 
     // we don't understand groups for 3D conv
     assert(!with_groups);
+#endif
 
     jcp = zero<decltype(jcp)>();
     jcp.ngroups = 1;
@@ -285,17 +287,98 @@ status_t jit_avx512_common_conv3D_bwd_data_kernel_f32::init_conf(
     return status::success;
 }
 
-#if 0
-
 void jit_avx512_common_conv3D_bwd_weights_kernel_f32::generate()
 {
     preamble();
 
-    mov(reg_input, ptr[param + GET_OFF(src)]);
-    mov(reg_output, ptr[param + GET_OFF(dst)]);
-    mov(reg_kernel, ptr[param + GET_OFF(filt)]);
+    // Base pointers.
+    const reg64_t rdst = rdi;
+    const reg64_t rsrc = rsi;
+    const reg64_t rweights = rdx;
+    const reg64_t rbias = rcx;
 
-    compute_loop();
+    // Decomposition.
+    reg64_t rdecomp = r8;
+    const int ODB_OFFSET = 0;
+    const int OHB_OFFSET = ODB_OFFSET + sizeof(uint64_t);
+    const int OWB_OFFSET = OHB_OFFSET + sizeof(uint64_t);
+
+    // Loop counters.
+    reg64_t rODB = r9;
+    reg64_t rOHB = r10;
+    reg64_t rOWB = r11;
+
+    // Load the accumulators with the weights for [kd][kh][kw].
+    Zmm accum[jcp.oc_block];
+    for (int oc = 0; oc < jcp.oc_block; ++oc)
+    {
+        accum[oc] = Zmm(oc);
+        vmovups(accum[oc], ptr[rweights + oc*jcp.ic_block*sizeof(float)]);
+    }
+    Zmm src = Zmm(jcp.oc_block);
+
+    // Need an additional accumulator if computing the bias.
+    Zmm bias = Zmm(jcp.oc_block + 1);
+    if (jcp.with_bias)
+    {
+        vmovups(bias, ptr[rbias]);
+    }
+
+    // Accumulate for od_b_*oh_b_*ow_b_ pixels.
+    // NB: We always compute the bias, for simplicity; caller must ensure to interpret results correctly.
+    // TODO: Better multi-dimensional index stepping.
+    Label od_loop, oh_loop, ow_loop;
+    mov(rODB, ptr[rdecomp + ODB_OFFSET]);
+    L(od_loop);
+    {
+        mov(rOHB, ptr[rdecomp + OHB_OFFSET]);
+        L(oh_loop);
+        {
+            mov(rOWB, ptr[rdecomp + OWB_OFFSET]);
+            L(ow_loop);
+            {
+                vmovups(src, ptr[rsrc]);
+                for (int oc = 0; oc < jcp.oc_block; ++oc)
+                {
+                    vfmadd231ps(accum[oc], src, ptr_b[rdst + oc*sizeof(float)]);
+                }
+                if (jcp.with_bias)
+                {
+                    vaddps(bias, bias, ptr[rdst]);
+                }
+                add(rdst, jcp.oc_block*sizeof(float));
+                add(rsrc, jcp.stride_w*jcp.ic_block*sizeof(float));
+                sub(rOWB, 1);
+                jnz(ow_loop);
+            }
+            imul(rOWB, ptr[rdecomp + OWB_OFFSET], jcp.oc_block*sizeof(float));
+            sub(rdst, rOWB);
+            add(rdst, jcp.ow*jcp.oc_block*sizeof(float));
+            imul(rOWB, ptr[rdecomp + OWB_OFFSET], jcp.stride_w*jcp.ic_block*sizeof(float));
+            sub(rsrc, rOWB);
+            add(rsrc, jcp.stride_h*jcp.iw*jcp.ic_block*sizeof(float));
+            sub(rOHB, 1);
+            jnz(oh_loop);
+        }
+        imul(rOHB, ptr[rdecomp + OHB_OFFSET], jcp.ow*jcp.oc_block*sizeof(float));
+        sub(rdst, rOHB);
+        add(rdst, jcp.oh*jcp.ow*jcp.oc_block*sizeof(float));
+        imul(rOHB, ptr[rdecomp + OHB_OFFSET], jcp.stride_h*jcp.iw*jcp.ic_block*sizeof(float));
+        sub(rsrc, rOHB);
+        add(rsrc, jcp.stride_d*jcp.ih*jcp.iw*jcp.ic_block*sizeof(float));
+        sub(rODB, 1);
+        jnz(od_loop);
+    }
+
+    // Store the accumulators back to the weights array.
+    for (int oc = 0; oc < jcp.oc_block; ++oc)
+    {
+        vmovups(ptr[rweights + oc*jcp.ic_block*sizeof(float)], accum[oc]);
+    }
+    if (jcp.with_bias)
+    {
+        vmovups(ptr[rbias], bias);
+    }
 
     postamble();
 }
@@ -320,40 +403,39 @@ status_t jit_avx512_common_conv3D_bwd_weights_kernel_f32::init_conf(
     jcp = zero<decltype(jcp)>();
     jcp.prop_kind = cd.prop_kind;
 
-    jcp.ngroups = with_groups ? diff_weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
-
-    jcp.oc = diff_dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
-
-    jcp.ih = src_d.dims()[2];
-    jcp.iw = src_d.dims()[3];
-    jcp.oh = diff_dst_d.dims()[2];
-    jcp.ow = diff_dst_d.dims()[3];
-
-    jcp.kh = diff_weights_d.dims()[with_groups + 2];
-    jcp.kw = diff_weights_d.dims()[with_groups + 3];
-
-    jcp.t_pad = cd.padding[0][0];
-    jcp.l_pad = cd.padding[0][1];
-
-    jcp.stride_h = cd.strides[0];
-    jcp.stride_w = cd.strides[1];
-
-    jcp.dilate_h = cd.dilates[0];
-    jcp.dilate_w = cd.dilates[1];
-    if (jcp.dilate_h != 0 || jcp.dilate_w != 0)
+    if (with_groups)
         return status::unimplemented;
+    jcp.ngroups = 1;
 
-    jcp.r_pad = nstl::max(0, (jcp.ow - 1) * jcp.stride_w + jcp.kw - jcp.iw
-        - jcp.l_pad);
-    jcp.b_pad = nstl::max(0, (jcp.oh - 1) * jcp.stride_h + jcp.kh - jcp.ih
-        - jcp.t_pad);
+    jcp.mb = src_d.dims()[0];
+    jcp.oc = diff_dst_d.dims()[1];
+    jcp.ic = src_d.dims()[1];
 
-    jcp.ihp = jcp.ih + jcp.t_pad + jcp.b_pad;
-    jcp.iwp = jcp.iw + jcp.l_pad + jcp.r_pad;
-    jcp.ohp = jcp.oh;
-    jcp.owp = jcp.ow;
+    jcp.id = src_d.dims()[2];
+    jcp.ih = src_d.dims()[3];
+    jcp.iw = src_d.dims()[4];
+
+    jcp.od = diff_dst_d.dims()[2];
+    jcp.oh = diff_dst_d.dims()[3];
+    jcp.ow = diff_dst_d.dims()[4];
+
+    jcp.kd = diff_weights_d.dims()[2];
+    jcp.kh = diff_weights_d.dims()[3];
+    jcp.kw = diff_weights_d.dims()[4];
+
+    jcp.d1_pad = cd.padding[0][0];
+    jcp.t_pad = cd.padding[0][1];
+    jcp.l_pad = cd.padding[0][2];
+
+    jcp.stride_d = cd.strides[0];
+    jcp.stride_h = cd.strides[1];
+    jcp.stride_w = cd.strides[2];
+
+    jcp.dilate_d = cd.dilates[0];
+    jcp.dilate_h = cd.dilates[1];
+    jcp.dilate_w = cd.dilates[2];
+    if (jcp.dilate_d != 0 || jcp.dilate_h != 0 || jcp.dilate_w != 0)
+        return status::unimplemented;
 
     /* conditions on bias memory */
     jcp.with_bias = cd.diff_bias_desc.format != memory_format::undef;
@@ -371,8 +453,8 @@ status_t jit_avx512_common_conv3D_bwd_weights_kernel_f32::init_conf(
     jcp.nb_oc = jcp.oc / jcp.oc_block;
 
     if (diff_dst_d.format() == any)
-        CHECK(diff_dst_pd.set_format(nChw16c));
-    if (diff_dst_d.format() != nChw16c)
+        CHECK(diff_dst_pd.set_format(nCdhw16c));
+    if (diff_dst_d.format() != nCdhw16c)
         return status::unimplemented;
 
     /* kernel applicability check wrt boundaries
@@ -386,104 +468,30 @@ status_t jit_avx512_common_conv3D_bwd_weights_kernel_f32::init_conf(
     if (!boundaries_ok)
         return status::unimplemented;
 
-    /* yet another common check */
-    if (jcp.kw > 14)
+    if (src_d.format() == any)
+        CHECK(src_pd.set_format(nCdhw16c));
+    if (diff_weights_d.format() == any)
+        CHECK(diff_weights_pd.set_format(with_groups
+                    ? gOIdhw16i16o : OIdhw16i16o));
+
+    const bool ok = true
+        && src_d.format() == nCdhw16c
+        && diff_weights_d.format() == (with_groups
+                ? gOIdhw16o16i : OIdhw16o16i);
+    if (!ok)
         return status::unimplemented;
 
-    /* setting register strategy */
-    for (int ur_w = nstl::min(max_ur_w, jcp.ow); ur_w > 0; --ur_w) {
-        if (jcp.ow % ur_w == 0) { jcp.ur_w = ur_w; break; }
-    }
+    jcp.ic_block = simd_w;
+    jcp.nb_ic = jcp.ic / jcp.ic_block;
+    jcp.src_fmt = src_d.format();
 
-    /* check for the 1st convolution */
-    jcp.is_1stconv = jcp.ic % simd_w;
-    if (jcp.is_1stconv) {
-        if (src_d.format() == any)
-            CHECK(src_pd.set_format(nchw));
-
-        const bool src_ok = true
-            && one_of(jcp.ic, 1, 3)
-            && implication(jcp.ic == 1, one_of(src_d.format(), nchw, nhwc))
-            && implication(jcp.ic != 1, src_d.format() == nchw)
-            && jcp.ngroups == 1;
-        if (!src_ok)
-            return status::unimplemented;
-
-        const int tr_ld = rnd_up(div_up(jcp.iw + jcp.l_pad + jcp.r_pad,
-                    jcp.stride_w), 16);
-        const int kh_step = nstl::max((28 - jcp.with_bias) / jcp.kw, 1);
-        const int kh_step_rem = jcp.kh % kh_step;
-        const auto want_4fma_wfmt = with_groups ? gOihw16o : Oihw16o;
-        const bool use_4fma = true
-            && mayiuse(avx512_mic_4ops)
-            && everyone_is(0, jcp.l_pad, jcp.r_pad, jcp.t_pad, jcp.b_pad)
-            && jcp.kw <= 28 - jcp.with_bias
-            && jcp.stride_w == 4
-            && tr_ld / simd_w <= 4 /* [bwd_w:tr_src:r1] */
-            && implication(jcp.with_bias, kh_step_rem == 1) /* [bwd_w:b:r1] */
-            && implication(diff_weights_d.format() != any,
-                    diff_weights_d.format() == want_4fma_wfmt);
-
-        if (use_4fma) {
-            jcp.ver = ver_4fma;
-            jcp.kh_step = kh_step;
-            jcp.tr_ld = tr_ld;
-            jcp.ic_block = 1;
-            if (diff_weights_d.format() == any)
-                CHECK(diff_weights_pd.set_format(want_4fma_wfmt));
-        } else {
-            jcp.ver = ver_fma;
-            jcp.ic_block = jcp.ic;
-
-            const auto want_wfmt = with_groups ? gOhwi16o : Ohwi16o;
-            if (diff_weights_d.format() == any)
-                CHECK(diff_weights_pd.set_format(want_wfmt));
-            if (diff_weights_d.format() != want_wfmt)
-                return status::unimplemented;
-        }
-
-        jcp.nb_ic = jcp.ic / jcp.ic_block;
-        jcp.src_fmt = src_d.format();
-    } else {
-        if (src_d.format() == any)
-            CHECK(src_pd.set_format(nChw16c));
-        if (diff_weights_d.format() == any)
-            CHECK(diff_weights_pd.set_format(with_groups
-                        ? gOIhw16i16o : OIhw16i16o));
-
-        const bool ok = true
-            && src_d.format() == nChw16c
-            && diff_weights_d.format() == (with_groups
-                    ? gOIhw16i16o : OIhw16i16o);
-        if (!ok)
-            return status::unimplemented;
-
-        jcp.ic_block = simd_w;
-        jcp.nb_ic = jcp.ic / jcp.ic_block;
-        jcp.src_fmt = src_d.format();
-
-        if (mayiuse(avx512_mic_4ops) && jcp.stride_w == 1)
-            jcp.ver = ver_4fma;
-        else
-            jcp.ver = ver_fma;
-
-        if (jcp.ver == ver_4fma) {
-            jcp.ur_w = jcp.ow;
-            // XXX, BUGBUGBUG, but not a FIXME: this assumes that it's OK to
-            // cross the right boundary. The only requirement is not to have
-            // NaNs there because another multiplicand is always guaranteed to
-            // be zero. This also may require the top-level driver to allocate
-            // four extra guarding elements at the very end of the buffer.
-            // I'm not proud of this hack, but it improves performance by
-            // about 5-10% depending on the dimensions (Roma)
-            jcp.tr_iw = rnd_up(jcp.iw + jcp.kw - 1, 4);
-            jcp.tr_src_num_guard_elems = 4; // upper bound
-        }
-    }
+    if (mayiuse(avx512_mic_4ops) && jcp.stride_w == 1)
+        jcp.ver = ver_4fma;
+    else
+        jcp.ver = ver_fma;
 
     return status::success;
 }
-#endif
 
 }
 }

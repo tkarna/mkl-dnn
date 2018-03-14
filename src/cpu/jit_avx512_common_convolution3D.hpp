@@ -304,7 +304,8 @@ struct jit_avx512_common_convolution3D_bwd_weights_t: public cpu_primitive_t {
                 const convolution_desc_t *adesc,
                 const primitive_attr_t *attr,
                 const convolution_fwd_pd_t *hint_fwd_pd)
-            : cpu_convolution_bwd_weights_pd_t(engine, adesc, attr, hint_fwd_pd)
+            : cpu_convolution_bwd_weights_pd_t(engine, adesc, attr, hint_fwd_pd),
+              jcp_({})
         {}
 
         DECLARE_COMMON_PD_T(jit_avx512_common_convolution3D_bwd_weights_t);
@@ -328,8 +329,14 @@ struct jit_avx512_common_convolution3D_bwd_weights_t: public cpu_primitive_t {
                         this->desc()->diff_bias_desc.data_type
                         == diff_wei_type)
                 && this->attr()->has_default_values();
-            return ok ? status::success : status::unimplemented;
+            if (!ok) return status::unimplemented;
+
+            return jit_avx512_common_conv3D_bwd_weights_kernel_f32::init_conf(
+                    jcp_, *this->desc(), this->src_pd_, this->diff_weights_pd_,
+                    this->diff_bias_pd_, this->diff_dst_pd_);
         }
+        jit_conv_conf_t jcp_;
+
         inline int MB() const { return this->desc()->src_desc.dims[0]; }
 
         inline int IC() const { return this->desc()->src_desc.dims[1]; }
@@ -383,7 +390,16 @@ struct jit_avx512_common_convolution3D_bwd_weights_t: public cpu_primitive_t {
 
     jit_avx512_common_convolution3D_bwd_weights_t(const pd_t *pd, const input_vector &inputs,
             const output_vector &outputs)
-        : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {}
+        : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {
+        kernel_ = new jit_avx512_common_conv3D_bwd_weights_kernel_f32(conf_.jcp_);
+        balance();
+        block();
+    }
+
+    ~jit_avx512_common_convolution3D_bwd_weights_t()
+    {
+        delete kernel_;
+    }
 
     typedef typename prec_traits<src_type>::type src_data_t;
     typedef typename prec_traits<diff_wei_type>::type diff_wei_data_t;
@@ -404,7 +420,17 @@ struct jit_avx512_common_convolution3D_bwd_weights_t: public cpu_primitive_t {
 
 private:
     void execute_backward_weights();
+    void balance();
+    void block();
+
+    struct thread_info_t;
+
     pd_t conf_;
+
+    jit_avx512_common_conv3D_bwd_weights_kernel_f32 *kernel_;
+
+    int nthr_, nthr_mb_, nthr_oc_b_, nthr_ic_b_, nthr_od_, nthr_oh_, nthr_ow_;
+    int od_b_, oh_b_, ow_b_;
 };
 
 }

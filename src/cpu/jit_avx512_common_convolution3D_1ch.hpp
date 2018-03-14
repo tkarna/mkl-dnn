@@ -280,6 +280,7 @@ struct jit_avx512_common_convolution3D_1ch_bwd_weights_t: public cpu_primitive_t
             const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {
         kernel_ = new jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32(conf_.jcp_);
+        balance();
     }
 
     ~jit_avx512_common_convolution3D_1ch_bwd_weights_t()
@@ -306,9 +307,15 @@ struct jit_avx512_common_convolution3D_1ch_bwd_weights_t: public cpu_primitive_t
 
 private:
     void execute_backward_weights();
+    void balance();
+
+    struct thread_info_t;
+
     pd_t conf_;
+
     jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32 *kernel_;
 
+    int nthr_, nthr_mb_, nthr_oc_b_, nthr_ic_b_, nthr_od_, nthr_oh_, nthr_ow_;
 };
 
 }

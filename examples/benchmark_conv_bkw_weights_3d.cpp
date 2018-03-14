@@ -280,6 +280,9 @@ int main(int argc, char **argv) {
         test_bkww_conv(1, { 12,  12,  12}, {2, 2, 2},  64, 128, {1, 1, 1}, {0, 0, 0});
         test_bkww_conv(1, { 11,  11,  11}, {2, 2, 2}, 128, 128, {1, 1, 1}, {0, 0, 0});
 
+        // cosmoflow topology (smaller problem size)
+        test_bkww_conv(1, {64, 64, 64}, {3, 3, 3},   1,  16, {1, 1, 1}, {0, 0, 0});
+
         // medical imaging topology
         // test_bkww_conv(1, {336, 304, 400}, {3, 5, 5},  1, 32, {1, 1, 1}, {0, 0, 0});
         // test_bkww_conv(1, {167, 150, 198}, {3, 3, 3}, 32, 32, {1, 1, 1}, {0, 0, 0});
