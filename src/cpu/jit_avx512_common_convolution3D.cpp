@@ -374,7 +374,7 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
     const memory_desc_wrapper diff_bias_d(conf_.diff_weights_pd(1));
 
     const int G = conf_.G();
-    const int MB = conf_.MB();
+    // const int MB = conf_.MB();
     const int OH = conf_.OH();
     const int OW = conf_.OW();
     const int OD = conf_.OD();
@@ -394,7 +394,7 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
     const int KSW = conf_.KSW();
     const int KSD = conf_.KSD();
 
-    const auto &jcp = kernel_->jcp;
+    // const auto &jcp = kernel_->jcp;
 
     const int nthr_ndhw = nthr_mb_*nthr_od_*nthr_oh_*nthr_ow_;
 
@@ -409,8 +409,8 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
     acc_data_t private_bias[OCB][nthr_ndhw][NBLOCK] __attribute__((aligned(64)));
     #pragma omp parallel num_threads(nthr_)
     {
-        int ithr = omp_get_thread_num(), nthr = omp_get_num_threads();
-        assert(nthr_ == nthr);
+        int ithr = omp_get_thread_num(); //, nthr = omp_get_num_threads();
+        // assert(nthr_ == nthr);
 
         thread_info_t thread_info(this, ithr);
         int ithr_ndhw = thread_info.ithr_mb*nthr_od_*nthr_oh_*nthr_ow_ + thread_info.ithr_od*nthr_oh_*nthr_ow_ + thread_info.ithr_oh*nthr_ow_ + thread_info.ithr_ow;
@@ -448,7 +448,7 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
             for (int owb = thread_info.ow_start; owb < thread_info.ow_end; owb += ow_b_)
             {
                 // TODO: Remove this old jit_decomp struct and use something better
-                jit_decomp decomp = { std::min(thread_info.od_end - odb, od_b_), std::min(thread_info.oh_end - ohb, oh_b_), std::min(thread_info.ow_end - owb, ow_b_) };
+                jit_decomp decomp = { (size_t)std::min(thread_info.od_end - odb, od_b_), (size_t)std::min(thread_info.oh_end - ohb, oh_b_), (size_t)std::min(thread_info.ow_end - owb, ow_b_) };
 
                 for (int kd = 0; kd < KD; ++kd)
                 for (int kh = 0; kh < KH; ++kh)
@@ -541,9 +541,9 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
     auto calc_mem_cost = [=](int nthr_mb, int nthr_oc_b, int nthr_ic_b, int nthr_od, int nthr_oh, int nthr_ow)
     {
         // TODO: These may need tweaking depending on loop order.
-        const int src_coef = 1;
-        const int dst_coef = 1;
-        const int weight_coef = 1;
+        // const int src_coef = 1;
+        // const int dst_coef = 1;
+        // const int weight_coef = 1;
 
         return 0
             + 1 /* src */

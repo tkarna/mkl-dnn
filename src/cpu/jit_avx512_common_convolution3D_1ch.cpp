@@ -264,7 +264,7 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
     const memory_desc_wrapper diff_bias_d(conf_.diff_weights_pd(1));
 
     // const int G = conf_.G();
-    const int MB = conf_.MB();
+    // const int MB = conf_.MB();
     const int OH = conf_.OH();
     const int OW = conf_.OW();
     const int OD = conf_.OD();
@@ -284,7 +284,7 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
     // const int KSW = conf_.KSW();
     // const int KSD = conf_.KSD();
 
-    const auto &jcp = kernel_->jcp;
+    // const auto &jcp = kernel_->jcp;
 
     const int nthr_ndhw = nthr_mb_*nthr_od_*nthr_oh_*nthr_ow_;
     assert(nthr_ndhw == nthr_);
@@ -295,8 +295,8 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
     acc_data_t private_bias[nthr_ndhw][NBLOCK] __attribute__((aligned(64)));
     #pragma omp parallel num_threads(nthr_)
     {
-        int ithr = omp_get_thread_num(), nthr = omp_get_num_threads();
-        assert(nthr_ == nthr);
+        int ithr = omp_get_thread_num(); //, nthr = omp_get_num_threads();
+        // assert(nthr_ == nthr);
 
         thread_info_t thread_info(this, ithr);
 
@@ -305,7 +305,7 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
         size_t od = thread_info.od_start;
         size_t oh = thread_info.oh_start;
         size_t ow = thread_info.ow_start;
-        jit_decomp decomp = { thread_info.img_work, thread_info.od_work, thread_info.oh_work, thread_info.ow_work };
+        jit_decomp decomp = { (size_t)thread_info.img_work, (size_t)thread_info.od_work, (size_t)thread_info.oh_work, (size_t)thread_info.ow_work };
         kernel(&diff_dst[mb*OD*OH*OW*NBLOCK + od*OH*OW*NBLOCK + oh*OW*NBLOCK + ow*NBLOCK], &src[mb*ID*IH*IW + od*IH*IW + oh*IW + ow], &private_weights[0][ithr][0], &private_bias[ithr][0], &decomp, nthr_ndhw);
 
         #pragma omp barrier
@@ -355,9 +355,9 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
     auto calc_mem_cost = [=](int nthr_mb, int nthr_oc_b, int nthr_ic_b, int nthr_od, int nthr_oh, int nthr_ow)
     {
         // TODO: These may need tweaking depending on loop order.
-        const int src_coef = 1;
-        const int dst_coef = 1;
-        const int weight_coef = 1;
+        // const int src_coef = 1;
+        // const int dst_coef = 1;
+        // const int weight_coef = 1;
 
         return 0
             + 1 /* src */
