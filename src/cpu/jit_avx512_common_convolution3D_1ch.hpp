@@ -281,10 +281,19 @@ struct jit_avx512_common_convolution3D_1ch_bwd_weights_t: public cpu_primitive_t
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {
         kernel_ = new jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32(conf_.jcp_);
         balance();
+
+        // TODO: The private space is this big in the worst case, but likely to be much smaller.
+        // TODO: Experiment with alternative mallocs.
+        auto &jcp = conf_.jcp_;
+        const int nthr_ndhw = nthr_mb_*nthr_od_*nthr_oh_*nthr_ow_;
+        private_weights_ = (diff_wei_data_t*) malloc(jcp.kd*jcp.kh*jcp.kw*nthr_ndhw*jcp.oc_block*sizeof(diff_wei_data_t), 2*1024*1024);
+        private_bias_ = (acc_data_t*) malloc(nthr_ndhw*jcp.oc_block*sizeof(acc_data_t), 2*1024*1024);
     }
 
     ~jit_avx512_common_convolution3D_1ch_bwd_weights_t()
     {
+        if (private_bias_) free(private_bias_);
+        if (private_weights_) free(private_weights_);
         delete kernel_;
     }
 
@@ -314,6 +323,8 @@ private:
     pd_t conf_;
 
     jit_avx512_common_conv3D_1ch_bwd_weights_kernel_f32 *kernel_;
+    diff_wei_data_t* private_weights_;
+    acc_data_t* private_bias_;
 
     int nthr_, nthr_mb_, nthr_oc_b_, nthr_ic_b_, nthr_od_, nthr_oh_, nthr_ow_;
 };
