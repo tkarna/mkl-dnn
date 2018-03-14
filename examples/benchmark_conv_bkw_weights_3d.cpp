@@ -23,8 +23,7 @@
 #include <cstdio>
 #include <ctime>
 
-#include <chrono>
-typedef std::chrono::high_resolution_clock Clock;
+#include <omp.h>
 
 using namespace mkldnn;
 
@@ -170,7 +169,7 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
 
     float complexity = 2*((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
 
-    const int ntime = 10;
+    const int ntime = 100;
     if (src_needs_reorder) {
         auto op = reorder(src_mem, reorder_src_mem);
         net.clear();
@@ -178,12 +177,8 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
         for (int it = 0; it < ntime; it++) {
             net.push_back(op);
         }
-        // auto t1 = Clock::now();
         // Execute
         stream(stream::kind::eager).submit(net).wait();
-        // auto t2 = Clock::now();
-        // float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
-        // std::cout << "src reorder: duration=" << duration << " ms" << "\n";
     }
     if (dst_needs_reorder) {
         auto op = reorder(diff_dst_mem, reorder_diff_dst_mem);
@@ -192,28 +187,26 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
         for (int it = 0; it < ntime; it++) {
             net.push_back(op);
         }
-        // auto t1 = Clock::now();
         // Execute
         stream(stream::kind::eager).submit(net).wait();
-        // auto t2 = Clock::now();
-        // float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
-        // std::cout << "diff dst reorder: duration=" << duration << " ms" << "\n";
     }
 
     net.clear();
     for (int it = 0; it < ntime; it++) {
         net.push_back(bkww_op);
     }
-    auto t1 = Clock::now();
+    double t1 = omp_get_wtime();
     // Execute
     stream(stream::kind::eager).submit(net).wait();
-    auto t2 = Clock::now();
-    float duration = (float)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()/ntime;
+    double t2 = omp_get_wtime();
+    double duration = 1000*(t2 - t1)/ntime;
     float speed = complexity/1000./1000./1000./duration*1000.*nbatch;
 
-    printf("bs=%2d ic=%3d oc=%3d %2dx%2dx%2d w=%dx%dx%d: %8.2f GFlops/s\n",
-        nbatch, in_channels, out_channels, in_height, in_width, in_depth,
-        weights_height, weights_width, weights_depth, speed);
+    printf("bs=%2d %3dx%3dx%3d w=%dx%dx%d st=%dx%dx%d ic=%3d oc=%3d: %8.2f GFlops/s\n",
+        nbatch, in_height, in_width, in_depth,
+        weights_height, weights_width, weights_depth,
+        stride_depth, stride_height, stride_width,
+        in_channels, out_channels, speed);
 
 }
 
@@ -224,12 +217,6 @@ void test_bkww_conv(const int bs, std::vector<int> insize, std::vector<int> kern
     int kh = kernel[0], kw = kernel[1], kd = kernel[2];
     int sh = stride[0], sw = stride[1], sd = stride[2];
     int ph = pad[0], pw = pad[1], pd = pad[2];
-    printf("bs=%d %dx%dx%d w=%dx%dx%d st=%dx%dx%d pd=%dx%dx%d ic=%2d oc=%2d ",
-           bs, ih, iw, id,
-           kh, kw, kd,
-           sh, sw, sd,
-           ph, pw, pd,
-           ic, oc);
     const int oh=(ih-kh+2*ph)/sh+1, ow=(iw-kw+2*pw)/sw+1, od=(id-kd+2*pd)/sd+1;
     int out_len = bs*oc*oh*ow*od;
     std::vector<float> in_diff_dst(out_len, 0);
