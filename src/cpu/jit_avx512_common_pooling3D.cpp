@@ -319,6 +319,11 @@ void jit_avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() 
     const int SH = conf_.KSH();
     const int SW = conf_.KSW();
 
+    // largest used input pixel (stride round-off)
+    const int ID_MAX = (OD - 1)*SD + KD;
+    const int IH_MAX = (OH - 1)*SH + KH;
+    const int IW_MAX = (OW - 1)*SW + KW;
+
     auto src_ix = MultiviewOffset(MB, OCB, ID, IH, IW);
     auto dst_ix = MultiviewOffset(MB, OCB, OD, OH, OW);
 
@@ -331,9 +336,9 @@ void jit_avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() 
 #       pragma omp parallel for collapse(2) schedule(static)
         for (int mb = 0; mb < MB; ++mb) {
             for (int ocb = 0; ocb < OCB; ++ocb) {
-                for (int id = 0; id < ID; ++id) {
-                    for (int ih = 0; ih < IH; ++ih) {
-                        for (int iw = 0; iw < IW; ++iw) {
+                for (int id = 0; id < ID_MAX; ++id) {
+                    for (int ih = 0; ih < IH_MAX; ++ih) {
+                        for (int iw = 0; iw < IW_MAX; ++iw) {
                             for (int _oc = 0; _oc < NBLOCK; ++_oc) {
                                 diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK + _oc] = data_type_t(0);
                             }
@@ -375,7 +380,7 @@ void jit_avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() 
         {
             const int tid = omp_get_thread_num();
             int start_ends[2*5];
-            std::vector<int> dims = {MB, OCB, ID, IH, IW};
+            std::vector<int> dims = {MB, OCB, ID_MAX, IH_MAX, IW_MAX};
             multi_decomp(start_ends, tid, nthreads, 5, &dims[0], &decomp[0]);
 
             for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {

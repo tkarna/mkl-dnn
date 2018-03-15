@@ -168,6 +168,8 @@ struct jit_avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
                                 == engine_kind::cpu)
                 && this->desc()->pool_kind == pool_kind::pool3D
                 && this->desc()->diff_src_desc.dims[1] % 16 == 0
+                && padT() == 0 && padL() == 0 && padD1() == 0
+                && KSD() <= KD() && KSH() <= KH() &&  KSW() <= KW()
                 && utils::one_of(desc_.diff_src_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && utils::one_of(desc_.diff_dst_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && attr()->has_default_values();

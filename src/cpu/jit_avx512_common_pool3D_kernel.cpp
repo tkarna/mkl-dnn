@@ -233,19 +233,6 @@ void jit_avx512_common_pool3D_bwd_kernel_f32::generate()
     movq(xmm1, rOD);
     vbroadcastss(vdenom, xmm1);
 
-    // check if any iteration count is zero
-    // NOTE is there a simpler way?
-    Label skip_kernel;
-    mov(rOD, ptr[rloop_bounds + ODMAX_OFFSET]);
-    cmp(rOD, 0);
-    je(skip_kernel);
-    mov(rOH, ptr[rloop_bounds + OHMAX_OFFSET]);
-    cmp(rOH, 0);
-    je(skip_kernel);
-    mov(rOW, ptr[rloop_bounds + OWMAX_OFFSET]);
-    cmp(rOW, 0);
-    je(skip_kernel);
-
     Label od_loop, oh_loop, ow_loop;
     mov(rOD, ptr[rloop_bounds + ODMAX_OFFSET]);
     L(od_loop);
@@ -266,8 +253,6 @@ void jit_avx512_common_pool3D_bwd_kernel_f32::generate()
         jnz(oh_loop);
     sub(rOD, 1);
     jnz(od_loop);
-
-    L(skip_kernel);
 
     // scale by denominator
     vmulps(accum, accum, vdenom);
