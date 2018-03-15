@@ -569,10 +569,10 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
     for (int nthr_mb = 1; nthr_mb <= nthr_mb_max; ++nthr_mb)
     {
         const int nthr_oc_b_max = nstl::min(nthr / nthr_mb, j.nb_oc);
-        for (int nthr_oc_b = j.nb_oc; nthr_oc_b <= nthr_oc_b_max; ++nthr_oc_b)
+        for (int nthr_oc_b = 1; nthr_oc_b <= nthr_oc_b_max; ++nthr_oc_b)
         {
             int nthr_ic_b_max = nstl::min((nthr / nthr_mb) / nthr_oc_b, j.nb_ic);
-            for (int nthr_ic_b = j.nb_ic; nthr_ic_b <= nthr_ic_b_max; ++nthr_ic_b)
+            for (int nthr_ic_b = 1; nthr_ic_b <= nthr_ic_b_max; ++nthr_ic_b)
             {
                 int nthr_od_max = nstl::min(((nthr / nthr_mb) / nthr_oc_b) / nthr_ic_b, j.od);
                 for (int nthr_od = 1; nthr_od <= nthr_od_max; ++nthr_od)
