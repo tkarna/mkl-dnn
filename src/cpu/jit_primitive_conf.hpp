@@ -267,10 +267,10 @@ struct jit_1x1_conv_call_s {
 /* pooling */
 struct jit_pool_conf_t {
     int mb, c;
-    int ih, iw, oh, ow;
-    int stride_h, stride_w;
-    int kh, kw;
-    int t_pad, l_pad;
+    int id, ih, iw, od, oh, ow;
+    int stride_d, stride_h, stride_w;
+    int kd, kh, kw;
+    int d1_pad, t_pad, l_pad;
     alg_kind_t alg;
     bool is_training;
     bool pad_w_is_null;
