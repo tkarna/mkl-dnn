@@ -558,7 +558,10 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
             * div_up(j.ow, nthr_ow)
             + 1 /* weights */
             * div_up(j.nb_oc, nthr_oc_b) * div_up(j.nb_ic, nthr_ic_b)
-            * j.kd * j.kh * j.kw * j.ic_block * j.oc_block;
+            * j.kd * j.kh * j.kw * j.ic_block * j.oc_block
+            + 1 /* bias */
+            * div_up(j.nb_oc, nthr_oc_b)
+            * j.oc_block;
     };
 
     int best_mem_cost = calc_mem_cost(nthr_mb_, nthr_oc_b_, nthr_ic_b_, nthr_od_, nthr_oh_, nthr_ow_);
