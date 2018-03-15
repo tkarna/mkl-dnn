@@ -403,10 +403,6 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
     //printf("nthr = %d\n", nthr_);
     //printf("nthr_oc_b = %d, nthr_ic_b = %d, nthr_ndhw = %d\n", nthr_oc_b_, nthr_ic_b_, nthr_ndhw);
 
-    // TODO: The private space is this big in the worst case, but likely to be much smaller.
-    // TODO: Should bypass reduction when it's unnecessary.
-    diff_wei_data_t private_weights[OCB][ICB][KD*KH*KW][nthr_ndhw][NBLOCK][NBLOCK] __attribute__((aligned(64)));
-    acc_data_t private_bias[OCB][nthr_ndhw][NBLOCK] __attribute__((aligned(64)));
     #pragma omp parallel num_threads(nthr_)
     {
         int ithr = omp_get_thread_num(); //, nthr = omp_get_num_threads();
@@ -464,6 +460,7 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
                 }
             } /* reduction dimensions */
 
+            diff_wei_data_t* thread_weights = &private_weights_[(ocb*ICB + icb)*KD*KH*KW*nthr_ndhw*NBLOCK*NBLOCK + ithr_ndhw*NBLOCK];
             for (int k = 0; k < KD*KH*KW; ++k)
             {
                 for (int _oc = 0; _oc < NBLOCK; ++_oc)
@@ -472,17 +469,18 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
 #                   pragma omp simd
                     for (int _ic = 0; _ic < NBLOCK; ++_ic)
                     {
-                        private_weights[ocb][icb][k][ithr_ndhw][_oc][_ic] = saturate<diff_wei_data_t>(dw[k][_oc][_ic]);
+                        thread_weights[(k*NBLOCK + _oc)*nthr_ndhw*NBLOCK + _ic] = saturate<diff_wei_data_t>(dw[k][_oc][_ic]);
                     }
                 }
             }
             if (diff_bias && icb == 0)
             {
+                acc_data_t* thread_bias = &private_bias_[ocb*nthr_ndhw*NBLOCK + ithr_ndhw*NBLOCK];
 #               pragma vector aligned nontemporal
 #               pragma omp simd
                 for (int _oc = 0; _oc < NBLOCK; ++_oc)
                 {
-                    private_bias[ocb][ithr_ndhw][_oc] = saturate<diff_wei_data_t>(db[_oc]);
+                    thread_bias[_oc] = saturate<diff_wei_data_t>(db[_oc]);
                 }
             }
 
@@ -492,11 +490,9 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
 
         // TODO: Put the reduction code into a function.
         // TODO: Investigate using an MKL-DNN reducer.
-        #pragma omp for collapse(4) nowait
-        for (int ocb = 0; ocb < OCB; ++ocb)
-        for (int icb = 0; icb < ICB; ++icb)
-        for (int k = 0; k < KD*KH*KW; ++k)
-        for (int _oc = 0; _oc < NBLOCK; ++_oc)
+        diff_wei_data_t* reduction_weights = private_weights_;
+        #pragma omp for nowait
+        for (int chunk = 0; chunk < OCB*ICB*KD*KH*KW*NBLOCK; ++chunk)
         {
             #pragma omp simd
             for (int _ic = 0; _ic < NBLOCK; ++_ic)
@@ -504,15 +500,16 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
                 acc_data_t sum = 0;
                 for (int t = 0; t < nthr_ndhw; ++t)
                 {
-                    sum += private_weights[ocb][icb][k][t][_oc][_ic];
+                    sum += reduction_weights[chunk*nthr_ndhw*NBLOCK + t*NBLOCK + _ic];
                 }
-                diff_weights[ocb*ICB*KD*KH*KW*NBLOCK*NBLOCK + icb*KD*KH*KW*NBLOCK*NBLOCK + k*NBLOCK*NBLOCK + _oc*NBLOCK + _ic] = sum;
+                diff_weights[chunk*NBLOCK + _ic] = sum;
             }
         }
         if (diff_bias)
         {
+            acc_data_t* reduction_bias = private_bias_;
             #pragma omp for nowait
-            for (int ocb = 0; ocb < OCB; ++ocb)
+            for (int chunk = 0; chunk < OCB; ++chunk)
             {
                 #pragma omp simd
                 for (int _oc = 0; _oc < NBLOCK; ++_oc)
@@ -520,9 +517,9 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
                     acc_data_t sum = 0;
                     for (int t = 0; t < nthr_ndhw; ++t)
                     {
-                        sum += private_bias[ocb][t][_oc];
+                        sum += reduction_bias[chunk*nthr_ndhw*NBLOCK + t*NBLOCK + _oc];
                     }
-                    diff_bias[ocb*NBLOCK + _oc] = sum;
+                    diff_bias[chunk*NBLOCK + _oc] = sum;
                 }
             }
         }

@@ -291,14 +291,14 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
 
     void (*kernel)(const diff_dst_data_t*,const src_data_t*,diff_wei_data_t*,diff_wei_data_t*,struct jit_decomp*,size_t) = (void (*)(const diff_dst_data_t*,const src_data_t*,diff_wei_data_t*,diff_wei_data_t*,struct jit_decomp*,size_t)) kernel_->jit_ker;
 
-    diff_wei_data_t private_weights[KD*KH*KW][nthr_ndhw][NBLOCK] __attribute__((aligned(64)));
-    acc_data_t private_bias[nthr_ndhw][NBLOCK] __attribute__((aligned(64)));
     #pragma omp parallel num_threads(nthr_)
     {
         int ithr = omp_get_thread_num(); //, nthr = omp_get_num_threads();
         // assert(nthr_ == nthr);
 
         thread_info_t thread_info(this, ithr);
+        diff_wei_data_t* thread_weights = &private_weights_[ithr*NBLOCK];
+        acc_data_t* thread_bias = &private_bias_[ithr*NBLOCK];
 
         // TODO: Remove this old jit_decomp struct and use thread_info_t directly
         size_t mb = thread_info.img_start;
@@ -306,14 +306,15 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
         size_t oh = thread_info.oh_start;
         size_t ow = thread_info.ow_start;
         jit_decomp decomp = { (size_t)thread_info.img_work, (size_t)thread_info.od_work, (size_t)thread_info.oh_work, (size_t)thread_info.ow_work };
-        kernel(&diff_dst[mb*OD*OH*OW*NBLOCK + od*OH*OW*NBLOCK + oh*OW*NBLOCK + ow*NBLOCK], &src[mb*ID*IH*IW + od*IH*IW + oh*IW + ow], &private_weights[0][ithr][0], &private_bias[ithr][0], &decomp, nthr_ndhw);
+        kernel(&diff_dst[mb*OD*OH*OW*NBLOCK + od*OH*OW*NBLOCK + oh*OW*NBLOCK + ow*NBLOCK], &src[mb*ID*IH*IW + od*IH*IW + oh*IW + ow], thread_weights, thread_bias, &decomp, nthr_ndhw);
 
         #pragma omp barrier
 
         // TODO: Put the reduction code into a function.
         // TODO: Investigate using an MKL-DNN reducer.
-#       pragma omp for
-        for (int k = 0; k < KD*KH*KW; ++k)
+        diff_wei_data_t* reduction_weights = private_weights_;
+#       pragma omp for nowait
+        for (int chunk = 0; chunk < KD*KH*KW; ++chunk)
         {
 #           pragma omp simd
             for (int _oc = 0; _oc < NBLOCK; ++_oc)
@@ -321,13 +322,14 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
                 acc_data_t sum = 0;
                 for (int t = 0; t < nthr_ndhw; ++t)
                 {
-                    sum += private_weights[k][t][_oc];
+                    sum += reduction_weights[chunk*nthr_ndhw*NBLOCK + t*NBLOCK + _oc];
                 }
-                diff_weights[k*NBLOCK + _oc] = sum;
+                diff_weights[chunk*NBLOCK + _oc] = sum;
             }
         }
         if (diff_bias)
         {
+            acc_data_t* reduction_bias = private_bias_;
 #           pragma omp master
 #           pragma omp simd
             for (int _oc = 0; _oc < NBLOCK; ++_oc)
@@ -335,7 +337,7 @@ void jit_avx512_common_convolution3D_1ch_bwd_weights_t<src_type, diff_wei_type, 
                 acc_data_t sum = 0;
                 for (int t = 0; t < nthr_ndhw; ++t)
                 {
-                    sum += private_bias[t][_oc];
+                    sum += reduction_bias[t*NBLOCK + _oc];
                 }
                 diff_bias[_oc] = sum;
             }
