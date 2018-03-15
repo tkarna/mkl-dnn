@@ -267,6 +267,13 @@ int main(int argc, char **argv) {
         test_bkww_conv(1, { 12,  12,  12}, {2, 2, 2},  64, 128, {1, 1, 1}, {0, 0, 0});
         test_bkww_conv(1, { 11,  11,  11}, {2, 2, 2}, 128, 128, {1, 1, 1}, {0, 0, 0});
 
+        // new 128-cube topology with 256 outputs (first 2 layers coincide)
+        test_bkww_conv(1, { 30,  30,  30}, {4, 4, 4},  32,  64, {1, 1, 1}, {0, 0, 0});
+        test_bkww_conv(1, { 13,  13,  13}, {3, 3, 3},  64, 128, {2, 2, 2}, {0, 0, 0});
+        test_bkww_conv(1, {  6,   6,   6}, {3, 3, 3}, 128, 256, {1, 1, 1}, {0, 0, 0});
+        test_bkww_conv(1, {  4,   4,   4}, {2, 2, 2}, 256, 256, {1, 1, 1}, {0, 0, 0});
+        test_bkww_conv(1, {  3,   3,   3}, {2, 2, 2}, 256, 256, {1, 1, 1}, {0, 0, 0});
+
         // cosmoflow topology (smaller problem size)
         test_bkww_conv(1, {64, 64, 64}, {3, 3, 3},   1,  16, {1, 1, 1}, {0, 0, 0});
 

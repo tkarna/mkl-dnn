@@ -686,12 +686,19 @@ bool test_bwd_conv(const int bs, const int ic, const int oc, const int insize, c
 
 int main(int argc, char **argv) {
     const int cosmoflow_dims[][6] = {
+        // original 128-cube topology
         {1, 1, 16, 128, 3, 1},
         {1, 16, 32, 63, 4, 1},
         {1, 32, 64, 30, 4, 2},
         {1, 64, 64, 14, 3, 1},
         {1, 64, 128, 12, 2, 1},
         {1, 128, 128, 11, 2, 1},
+        // new topology (first 2 layers coincide)
+        {1, 32, 64, 30, 4, 1},
+        {1, 64, 128, 13, 3, 2},
+        {1, 128, 256, 6, 3, 1},
+        {1, 256, 256, 4, 2, 1},
+        {1, 256, 256, 3, 2, 1},
         {0}
     };
 

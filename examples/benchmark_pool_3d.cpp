@@ -321,6 +321,7 @@ int main(int argc, char **argv) {
         //                         input size      ch  kernel     stride     padding   batch
         test_pool_3d("both", pooling_avg, {126, 126, 126}, 16, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
         test_pool_3d("both", pooling_avg, { 60,  60,  60}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
+        test_pool_3d("both", pooling_avg, { 27,  27,  27}, 64, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
 
         // medical imaging layers
         test_pool_3d("fwd", pooling_max, {334, 300, 396}, 32, {2, 2, 2}, {2, 2, 2}, {0, 0, 0}, 1);
