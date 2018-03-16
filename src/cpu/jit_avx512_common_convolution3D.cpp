@@ -374,7 +374,7 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
     const memory_desc_wrapper diff_bias_d(conf_.diff_weights_pd(1));
 
     const int G = conf_.G();
-    // const int MB = conf_.MB();
+    const int MB = conf_.MB();
     const int OH = conf_.OH();
     const int OW = conf_.OW();
     const int OD = conf_.OD();
@@ -403,127 +403,170 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
     //printf("nthr = %d\n", nthr_);
     //printf("nthr_oc_b = %d, nthr_ic_b = %d, nthr_ndhw = %d\n", nthr_oc_b_, nthr_ic_b_, nthr_ndhw);
 
-    #pragma omp parallel num_threads(nthr_)
+    // If threading over images and pixels, a reduction is required.
+    if (nthr_ndhw > 1)
     {
-        int ithr = omp_get_thread_num(); //, nthr = omp_get_num_threads();
-        // assert(nthr_ == nthr);
-
-        thread_info_t thread_info(this, ithr);
-        int ithr_ndhw = thread_info.ithr_mb*nthr_od_*nthr_oh_*nthr_ow_ + thread_info.ithr_od*nthr_oh_*nthr_ow_ + thread_info.ithr_oh*nthr_ow_ + thread_info.ithr_ow;
-
-        for (int g = 0; g < G; ++g)
-        for (int ocb = thread_info.oc_b_start; ocb < thread_info.oc_b_end; ++ocb)
-        for (int icb = thread_info.ic_b_start; icb < thread_info.ic_b_end; ++icb)
+        #pragma omp parallel num_threads(nthr_)
         {
-            acc_data_t dw[KD*KH*KW][NBLOCK][NBLOCK] __attribute__((aligned(64)));
-            acc_data_t db[NBLOCK] __attribute__((aligned(64)));
-            for (int _kt = 0; _kt < KD*KH*KW; ++_kt)
+            int ithr = omp_get_thread_num(); //, nthr = omp_get_num_threads();
+            // assert(nthr_ == nthr);
+
+            thread_info_t thread_info(this, ithr);
+            int ithr_ndhw = thread_info.ithr_mb*nthr_od_*nthr_oh_*nthr_ow_ + thread_info.ithr_od*nthr_oh_*nthr_ow_ + thread_info.ithr_oh*nthr_ow_ + thread_info.ithr_ow;
+
+            for (int g = 0; g < G; ++g)
+            for (int ocb = thread_info.oc_b_start; ocb < thread_info.oc_b_end; ++ocb)
+            for (int icb = thread_info.ic_b_start; icb < thread_info.ic_b_end; ++icb)
             {
-                #pragma unroll
-                for (int _oc = 0; _oc < NBLOCK; ++_oc)
+                acc_data_t dw[KD*KH*KW][NBLOCK][NBLOCK] __attribute__((aligned(64)));
+                acc_data_t db[NBLOCK] __attribute__((aligned(64)));
+                for (int _kt = 0; _kt < KD*KH*KW; ++_kt)
+                {
+                    #pragma unroll
+                    for (int _oc = 0; _oc < NBLOCK; ++_oc)
+                    {
+                        #pragma omp simd
+                        for (int _ic = 0; _ic < NBLOCK; ++_ic)
+                        {
+                            dw[_kt][_oc][_ic] = 0;
+                        }
+                    }
+                }
+                if (diff_bias && icb == 0)
                 {
                     #pragma omp simd
-                    for (int _ic = 0; _ic < NBLOCK; ++_ic)
+                    for (int _oc = 0; _oc < NBLOCK; ++_oc)
                     {
-                        dw[_kt][_oc][_ic] = 0;
+                        db[_oc] = 0;
                     }
                 }
-            }
-            if (diff_bias && icb == 0)
-            {
-                #pragma omp simd
-                for (int _oc = 0; _oc < NBLOCK; ++_oc)
+
+                for (int mb = thread_info.img_start; mb < thread_info.img_end; ++mb)
+                for (int odb = thread_info.od_start; odb < thread_info.od_end; odb += od_b_)
+                for (int ohb = thread_info.oh_start; ohb < thread_info.oh_end; ohb += oh_b_)
+                for (int owb = thread_info.ow_start; owb < thread_info.ow_end; owb += ow_b_)
                 {
-                    db[_oc] = 0;
+                   // TODO: Remove this old jit_decomp struct and use something better
+                   jit_decomp decomp = { (size_t)std::min(thread_info.od_end - odb, od_b_), (size_t)std::min(thread_info.oh_end - ohb, oh_b_), (size_t)std::min(thread_info.ow_end - owb, ow_b_) };
+
+                   for (int kd = 0; kd < KD; ++kd)
+                   for (int kh = 0; kh < KH; ++kh)
+                   for (int kw = 0; kw < KW; ++kw)
+                   {
+                       acc_data_t dummy[NBLOCK] __attribute__((aligned(64)));
+                       acc_data_t* bias_ptr = (diff_bias && icb == 0 && kw == 0 && kh == 0 && kd == 0) ? &db[0] : &dummy[0];
+                       kernel(&diff_dst[mb*G*OCB*OD*OH*OW*NBLOCK + g*OCB*OD*OH*OW*NBLOCK + ocb*OD*OH*OW*NBLOCK + odb*OH*OW*NBLOCK + ohb*OW*NBLOCK + owb*NBLOCK],
+                              &src[mb*G*ICB*ID*IH*IW*NBLOCK + g*ICB*ID*IH*IW*NBLOCK + icb*ID*IH*IW*NBLOCK + (odb*KSD + kd)*IH*IW*NBLOCK + (ohb*KSH + kh)*IW*NBLOCK + (owb*KSW + kw)*NBLOCK],
+                              &dw[kd*KH*KW+kh*KW+kw][0][0],
+                              bias_ptr,
+                              &decomp);
+                   }
+               } /* reduction dimensions */
+
+               diff_wei_data_t* thread_weights = &private_weights_[(ocb*ICB + icb)*KD*KH*KW*nthr_ndhw*NBLOCK*NBLOCK + ithr_ndhw*NBLOCK];
+               for (int k = 0; k < KD*KH*KW; ++k)
+               {
+                   for (int _oc = 0; _oc < NBLOCK; ++_oc)
+                   {
+#                       pragma vector aligned nontemporal
+#                       pragma omp simd
+                        for (int _ic = 0; _ic < NBLOCK; ++_ic)
+                        {
+                            thread_weights[(k*NBLOCK + _oc)*nthr_ndhw*NBLOCK + _ic] = saturate<diff_wei_data_t>(dw[k][_oc][_ic]);
+                        }
+                    }
                 }
-            }
-
-            for (int mb = thread_info.img_start; mb < thread_info.img_end; ++mb)
-            for (int odb = thread_info.od_start; odb < thread_info.od_end; odb += od_b_)
-            for (int ohb = thread_info.oh_start; ohb < thread_info.oh_end; ohb += oh_b_)
-            for (int owb = thread_info.ow_start; owb < thread_info.ow_end; owb += ow_b_)
-            {
-                // TODO: Remove this old jit_decomp struct and use something better
-                jit_decomp decomp = { (size_t)std::min(thread_info.od_end - odb, od_b_), (size_t)std::min(thread_info.oh_end - ohb, oh_b_), (size_t)std::min(thread_info.ow_end - owb, ow_b_) };
-
-                for (int kd = 0; kd < KD; ++kd)
-                for (int kh = 0; kh < KH; ++kh)
-                for (int kw = 0; kw < KW; ++kw)
+                if (diff_bias && icb == 0)
                 {
-                    acc_data_t dummy[NBLOCK] __attribute__((aligned(64)));
-                    acc_data_t* bias_ptr = (diff_bias && icb == 0 && kw == 0 && kh == 0 && kd == 0) ? &db[0] : &dummy[0];
-                    kernel(&diff_dst[mb*G*OCB*OD*OH*OW*NBLOCK + g*OCB*OD*OH*OW*NBLOCK + ocb*OD*OH*OW*NBLOCK + odb*OH*OW*NBLOCK + ohb*OW*NBLOCK + owb*NBLOCK],
-                           &src[mb*G*ICB*ID*IH*IW*NBLOCK + g*ICB*ID*IH*IW*NBLOCK + icb*ID*IH*IW*NBLOCK + (odb*KSD + kd)*IH*IW*NBLOCK + (ohb*KSH + kh)*IW*NBLOCK + (owb*KSW + kw)*NBLOCK],
-                           &dw[kd*KH*KW+kh*KW+kw][0][0],
-                           bias_ptr,
-                           &decomp);
-                }
-            } /* reduction dimensions */
-
-            diff_wei_data_t* thread_weights = &private_weights_[(ocb*ICB + icb)*KD*KH*KW*nthr_ndhw*NBLOCK*NBLOCK + ithr_ndhw*NBLOCK];
-            for (int k = 0; k < KD*KH*KW; ++k)
-            {
-                for (int _oc = 0; _oc < NBLOCK; ++_oc)
-                {
+                    acc_data_t* thread_bias = &private_bias_[ocb*nthr_ndhw*NBLOCK + ithr_ndhw*NBLOCK];
 #                   pragma vector aligned nontemporal
 #                   pragma omp simd
-                    for (int _ic = 0; _ic < NBLOCK; ++_ic)
-                    {
-                        thread_weights[(k*NBLOCK + _oc)*nthr_ndhw*NBLOCK + _ic] = saturate<diff_wei_data_t>(dw[k][_oc][_ic]);
+                    for (int _oc = 0; _oc < NBLOCK; ++_oc)
+                        {
+                        thread_bias[_oc] = saturate<diff_wei_data_t>(db[_oc]);
                     }
                 }
-            }
-            if (diff_bias && icb == 0)
-            {
-                acc_data_t* thread_bias = &private_bias_[ocb*nthr_ndhw*NBLOCK + ithr_ndhw*NBLOCK];
-#               pragma vector aligned nontemporal
-#               pragma omp simd
-                for (int _oc = 0; _oc < NBLOCK; ++_oc)
-                {
-                    thread_bias[_oc] = saturate<diff_wei_data_t>(db[_oc]);
-                }
-            }
 
-        } /* independent dimensions */
+            } /* independent dimensions */
 
-        #pragma omp barrier
+            #pragma omp barrier
 
-        // TODO: Put the reduction code into a function.
-        // TODO: Investigate using an MKL-DNN reducer.
-        diff_wei_data_t* reduction_weights = private_weights_;
-        #pragma omp for nowait
-        for (int chunk = 0; chunk < OCB*ICB*KD*KH*KW*NBLOCK; ++chunk)
-        {
-            #pragma omp simd
-            for (int _ic = 0; _ic < NBLOCK; ++_ic)
-            {
-                acc_data_t sum = 0;
-                for (int t = 0; t < nthr_ndhw; ++t)
-                {
-                    sum += reduction_weights[chunk*nthr_ndhw*NBLOCK + t*NBLOCK + _ic];
-                }
-                diff_weights[chunk*NBLOCK + _ic] = sum;
-            }
-        }
-        if (diff_bias)
-        {
-            acc_data_t* reduction_bias = private_bias_;
+            // TODO: Put the reduction code into a function.
+            // TODO: Investigate using an MKL-DNN reducer.
+            diff_wei_data_t* reduction_weights = private_weights_;
             #pragma omp for nowait
-            for (int chunk = 0; chunk < OCB; ++chunk)
+            for (int chunk = 0; chunk < OCB*ICB*KD*KH*KW*NBLOCK; ++chunk)
             {
                 #pragma omp simd
-                for (int _oc = 0; _oc < NBLOCK; ++_oc)
+                for (int _ic = 0; _ic < NBLOCK; ++_ic)
                 {
                     acc_data_t sum = 0;
                     for (int t = 0; t < nthr_ndhw; ++t)
                     {
-                        sum += reduction_bias[chunk*nthr_ndhw*NBLOCK + t*NBLOCK + _oc];
+                        sum += reduction_weights[chunk*nthr_ndhw*NBLOCK + t*NBLOCK + _ic];
                     }
-                    diff_bias[chunk*NBLOCK + _oc] = sum;
+                    diff_weights[chunk*NBLOCK + _ic] = sum;
+                }
+            }
+            if (diff_bias)
+            {
+                acc_data_t* reduction_bias = private_bias_;
+                #pragma omp for nowait
+                for (int chunk = 0; chunk < OCB; ++chunk)
+                {
+                    #pragma omp simd
+                    for (int _oc = 0; _oc < NBLOCK; ++_oc)
+                    {
+                        acc_data_t sum = 0;
+                        for (int t = 0; t < nthr_ndhw; ++t)
+                        {
+                            sum += reduction_bias[chunk*nthr_ndhw*NBLOCK + t*NBLOCK + _oc];
+                        }
+                        diff_bias[chunk*NBLOCK + _oc] = sum;
+                    }
+                }
+            }
+        } /* parallel region */
+    }
+
+    // If only threading over channels, a reduction is not required.
+    else
+    {
+        #pragma omp parallel num_threads(nthr_)
+        {
+            int ithr = omp_get_thread_num(); //, nthr = omp_get_num_threads();
+            // assert(nthr_ == nthr);
+
+            thread_info_t thread_info(this, ithr);
+
+            for (int g = 0; g < G; ++g)
+            for (int ocb = thread_info.oc_b_start; ocb < thread_info.oc_b_end; ++ocb)
+            for (int icb = thread_info.ic_b_start; icb < thread_info.ic_b_end; ++icb)
+            {
+                for (int mb = 0; mb < MB; ++mb)
+                for (int odb = 0; odb < OD; odb += od_b_)
+                for (int ohb = 0; ohb < OH; ohb += oh_b_)
+                for (int owb = 0; owb < OW; owb += ow_b_)
+                {
+                   // TODO: Remove this old jit_decomp struct and use something better
+                   jit_decomp decomp = { (size_t)std::min(thread_info.od_end - odb, od_b_), (size_t)std::min(thread_info.oh_end - ohb, oh_b_), (size_t)std::min(thread_info.ow_end - owb, ow_b_) };
+
+                   for (int kd = 0; kd < KD; ++kd)
+                   for (int kh = 0; kh < KH; ++kh)
+                   for (int kw = 0; kw < KW; ++kw)
+                   {
+                       acc_data_t dummy[NBLOCK] __attribute__((aligned(64)));
+                       acc_data_t* bias_ptr = (diff_bias && icb == 0 && kw == 0 && kh == 0 && kd == 0) ? &diff_bias[ocb*NBLOCK] : &dummy[0];
+                       kernel(&diff_dst[mb*G*OCB*OD*OH*OW*NBLOCK + g*OCB*OD*OH*OW*NBLOCK + ocb*OD*OH*OW*NBLOCK + odb*OH*OW*NBLOCK + ohb*OW*NBLOCK + owb*NBLOCK],
+                              &src[mb*G*ICB*ID*IH*IW*NBLOCK + g*ICB*ID*IH*IW*NBLOCK + icb*ID*IH*IW*NBLOCK + (odb*KSD + kd)*IH*IW*NBLOCK + (ohb*KSH + kh)*IW*NBLOCK + (owb*KSW + kw)*NBLOCK],
+                              &diff_weights[ocb*ICB*KD*KH*KW*NBLOCK*NBLOCK + icb*KD*KH*KW*NBLOCK*NBLOCK + kd*KH*KW*NBLOCK*NBLOCK + kh*KW*NBLOCK*NBLOCK + kw*NBLOCK*NBLOCK],
+                              bias_ptr,
+                              &decomp);
+                   }
                 }
             }
         }
-    } /* parallel region */
+    }
 }
 
 template <data_type_t src_type, data_type_t diff_wei_type,
