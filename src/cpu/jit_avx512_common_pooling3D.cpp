@@ -383,20 +383,49 @@ void jit_avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() 
             std::vector<int> dims = {MB, OCB, ID_MAX, IH_MAX, IW_MAX};
             multi_decomp(start_ends, tid, nthreads, 5, &dims[0], &decomp[0]);
 
+            // precompute loop bounds
+            const size_t LOC_ID_START = start_ends[2*2+0];
+            const size_t LOC_IH_START = start_ends[2*3+0];
+            const size_t LOC_IW_START = start_ends[2*4+0];
+            const size_t LOC_ID_LEN = start_ends[2*2+1] - LOC_ID_START;
+            const size_t LOC_IH_LEN = start_ends[2*3+1] - LOC_IH_START;
+            const size_t LOC_IW_LEN = start_ends[2*4+1] - LOC_IW_START;
+            std::vector<std::pair<size_t, size_t> > od_lims(LOC_ID_LEN);
+            std::vector<std::pair<size_t, size_t> > oh_lims(LOC_IH_LEN);
+            std::vector<std::pair<size_t, size_t> > ow_lims(LOC_IW_LEN);
+            for (size_t i = 0; i < LOC_ID_LEN; ++i) {
+                const int id = i + LOC_ID_START;
+                const int od_start = nstl::max((id - KD + SD)/SD, 0);
+                const int od_end = nstl::min(id/SD + 1, OD);
+                od_lims[i] = std::make_pair((size_t)od_start, (size_t)(od_end - od_start));
+            }
+            for (size_t i = 0; i < LOC_IH_LEN; ++i) {
+                const int ih = i + LOC_IH_START;
+                const int oh_start = nstl::max((ih - KH + SH)/SH, 0);
+                const int oh_end = nstl::min(ih/SH + 1, OH);
+                oh_lims[i] = std::make_pair((size_t)oh_start, (size_t)(oh_end - oh_start));
+            }
+            for (size_t i = 0; i < LOC_IW_LEN; ++i) {
+                const int iw = i + LOC_IW_START;
+                const int ow_start = nstl::max((iw - KW + SW)/SW, 0);
+                const int ow_end = nstl::min(iw/SW + 1, OW);
+                ow_lims[i] = std::make_pair((size_t)ow_start, (size_t)(ow_end - ow_start));
+            }
+
             for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
                 for (int ocb = start_ends[2*1+0]; ocb < start_ends[2*1+1]; ++ocb) {
-                    for (int id = start_ends[2*2+0]; id < start_ends[2*2+1]; ++id) {
-                        for (int ih = start_ends[2*3+0]; ih < start_ends[2*3+1]; ++ih) {
-                            for (int iw = start_ends[2*4+0]; iw < start_ends[2*4+1]; ++iw) {
-                                int od_start = nstl::max((id - KD + SD)/SD, 0);
-                                int oh_start = nstl::max((ih - KH + SH)/SH, 0);
-                                int ow_start = nstl::max((iw - KW + SW)/SW, 0);
-                                int od_end = nstl::min(id/SD + 1, OD);
-                                int oh_end = nstl::min(ih/SH + 1, OH);
-                                int ow_end = nstl::min(iw/SW + 1, OW);
+                    for (int id = LOC_ID_START; id < start_ends[2*2+1]; ++id) {
+                        for (int ih = LOC_IH_START; ih < start_ends[2*3+1]; ++ih) {
+                            for (int iw = LOC_IW_START; iw < start_ends[2*4+1]; ++iw) {
+                                const size_t od_start = od_lims[id - LOC_ID_START].first;
+                                const size_t od_len = od_lims[id - LOC_ID_START].second;
+                                const size_t oh_start = oh_lims[ih - LOC_IH_START].first;
+                                const size_t oh_len = oh_lims[ih - LOC_IH_START].second;
+                                const size_t ow_start = ow_lims[iw - LOC_IW_START].first;
+                                const size_t ow_len = ow_lims[iw - LOC_IW_START].second;
                                 const data_t *diff_dst_vec = (data_t *)&diff_dst[dst_ix.off(mb, ocb, od_start, oh_start, ow_start)*NBLOCK];
                                 data_t *diff_src_vec = (data_t *)&diff_src[src_ix.off(mb, ocb, id, ih, iw)*NBLOCK];
-                                loop_bounds lbounds = {(size_t)(od_end - od_start), (size_t)(oh_end - oh_start), (size_t)(ow_end - ow_start)};
+                                loop_bounds lbounds = {od_len, oh_len, ow_len};
                                 kernel(diff_src_vec, diff_dst_vec, &lbounds);
                             }
                         }
