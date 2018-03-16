@@ -604,6 +604,12 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
     if (nthr_mb_ > max_threads/2 && nthr_mb_ < max_threads)
         nthr_mb_ = nstl::min(j.mb, max_threads);
 
+    /* correct for case where above selects ICB instead of OCB */
+    if (j.nb_oc >= j.nb_ic && nthr_oc_b_ < nthr_ic_b_ && (j.nb_oc % nthr_ic_b_) == 0 && (j.nb_ic % nthr_oc_b_) == 0)
+    {
+        std::swap(nthr_oc_b_, nthr_ic_b_);
+    }
+
     nthr_ = nthr_mb_ * nthr_oc_b_ * nthr_ic_b_ * nthr_od_ * nthr_oh_ * nthr_ow_;
     assert(nthr_ <= max_threads);
 }
