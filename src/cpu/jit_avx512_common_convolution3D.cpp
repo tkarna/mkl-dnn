@@ -543,6 +543,20 @@ void jit_avx512_common_convolution3D_bwd_weights_t<src_type, diff_wei_type, diff
             for (int ocb = thread_info.oc_b_start; ocb < thread_info.oc_b_end; ++ocb)
             for (int icb = thread_info.ic_b_start; icb < thread_info.ic_b_end; ++icb)
             {
+                #pragma omp simd
+                for (int chunk = 0; chunk < KD*KH*KW*NBLOCK*NBLOCK; ++chunk)
+                {
+                    diff_weights[(ocb*ICB + icb)*KD*KH*KW*NBLOCK*NBLOCK + chunk] = 0;
+                }
+                if (diff_bias && icb == 0)
+                {
+                    #pragma omp simd
+                    for (int _oc = 0; _oc < NBLOCK; ++_oc)
+                    {
+                        diff_bias[ocb*NBLOCK + _oc] = 0;
+                    }
+                }
+
                 for (int mb = 0; mb < MB; ++mb)
                 for (int odb = 0; odb < OD; odb += od_b_)
                 for (int ohb = 0; ohb < OH; ohb += oh_b_)
