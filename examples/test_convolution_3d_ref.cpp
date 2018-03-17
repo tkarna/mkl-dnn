@@ -814,10 +814,11 @@ bool assert_bkw_weights_convolution(const int nbatch, const int in_channels,
     memory::dims dst_dims = {nbatch, out_channels, out_depth, out_height, out_width};
 
     // allocate memory
+    // initialize weights to non-zero to check kernel zeroes it appropriately
     std::vector<float> vect_diff_dst(std::accumulate(dst_dims.begin(),
         dst_dims.end(), 1, std::multiplies<uint32_t>()));
     std::vector<float> vect_diff_weights(std::accumulate(weights_dims.begin(),
-        weights_dims.end(), 1, std::multiplies<uint32_t>()));
+        weights_dims.end(), 1, std::multiplies<uint32_t>()), 1);
     std::vector<float> vect_diff_bias(std::accumulate(bias_dims.begin(),
         bias_dims.end(), 1, std::multiplies<uint32_t>()));
     std::vector<float> vect_src(std::accumulate(src_dims.begin(),
