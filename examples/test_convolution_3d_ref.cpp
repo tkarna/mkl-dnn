@@ -1194,6 +1194,13 @@ int main(int argc, char **argv) {
         // cosmoflow layers (smaller problem size)
         success = success && test_full(1, {64, 64, 64}, {3, 3, 3}, 1, 16, {1, 1, 1}, {0, 0, 0}, true);
 
+        // new 128-cube topology with 256 outputs (first 2 layers coincide)
+        success = success && test_full(1, { 30,  30,  30}, {4, 4, 4},  32,  64, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, { 13,  13,  13}, {3, 3, 3},  64, 128, {2, 2, 2}, {0, 0, 0}, true);
+        success = success && test_full(1, {  6,   6,   6}, {3, 3, 3}, 128, 256, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {  4,   4,   4}, {2, 2, 2}, 256, 256, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {  3,   3,   3}, {2, 2, 2}, 256, 256, {1, 1, 1}, {0, 0, 0}, true);
+
         // medical imaging layers
         // NOTE these take a while to run
         // success = success && test_full(1, {336, 304, 400}, {3, 5, 5}, 1, 32, {1, 1, 1}, {0, 0, 0}, true);
