@@ -168,6 +168,8 @@ struct jit_avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
                                 == engine_kind::cpu)
                 && this->desc()->pool_kind == pool_kind::pool3D
                 && this->desc()->diff_src_desc.dims[1] % 16 == 0
+                && padT() == 0 && padL() == 0 && padD1() == 0
+                && KSD() <= KD() && KSH() <= KH() &&  KSW() <= KW()
                 && utils::one_of(desc_.diff_src_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && utils::one_of(desc_.diff_dst_desc.format, memory_format::nCdhw16c, memory_format::any)
                 && attr()->has_default_values();
@@ -176,9 +178,13 @@ struct jit_avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
             if (desc()->alg_kind == pooling_max)
                 ws_pd_ = *(cpu_memory_t::pd_t*)hint_fwd_pd_->workspace_pd();
 
-            auto status = jit_avx512_common_pool3D_bwd_kernel_f32::init_conf(
+            auto jit_status = jit_avx512_common_pool3D_bwd_kernel_f32::init_conf(
                     jpp, desc_, this->diff_src_pd_, this->diff_dst_pd_);
-            return status;
+            if (jit_status != status::success)
+                return status::unimplemented;
+            jit_status = jit_avx512_common_pool3D_bwd_simple_kernel_f32::init_conf(
+                    jpp, desc_, this->diff_src_pd_, this->diff_dst_pd_);
+            return jit_status;
         }
 
         jit_pool_conf_t jpp;
@@ -224,6 +230,7 @@ struct jit_avx512_common_pooling3D_bwd_t: public cpu_primitive_t {
                       const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd) {
             kernel_ = new jit_avx512_common_pool3D_bwd_kernel_f32(conf_.jpp);
+            kernel_simple_ = new jit_avx512_common_pool3D_bwd_simple_kernel_f32(conf_.jpp);
         }
     ~jit_avx512_common_pooling3D_bwd_t()
     {
@@ -241,6 +248,7 @@ private:
     void execute_backward();
     pd_t conf_;
     jit_avx512_common_pool3D_bwd_kernel_f32 *kernel_;
+    jit_avx512_common_pool3D_bwd_simple_kernel_f32 *kernel_simple_;
 };
 
 }
