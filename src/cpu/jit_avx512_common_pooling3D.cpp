@@ -329,6 +329,8 @@ void jit_avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() 
 
     typedef void (*jitkernel_t)(const data_t*, const data_t*, struct loop_bounds*);
     jitkernel_t kernel = (jitkernel_t) kernel_->jit_ker;
+    typedef void (*jitkernel_s_t)(const data_t*, const data_t*);
+    jitkernel_s_t kernel_simple = (jitkernel_s_t) kernel_simple_->jit_ker;
 
     auto alg = conf_.desc()->alg_kind;
 
@@ -387,7 +389,6 @@ void jit_avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() 
                 std::vector<int> dims = {MB, OCB, OD, OH, OW};
                 multi_decomp(start_ends, tid, nthreads, 5, &dims[0], &decomp[0]);
 
-                data_t inv_summands = 1.0/(KD*KH*KW);
                 for (int mb = start_ends[2*0+0]; mb < start_ends[2*0+1]; ++mb) {
                     for (int ocb = start_ends[2*1+0]; ocb < start_ends[2*1+1]; ++ocb) {
                         for (int od = start_ends[2*2+0]; od < start_ends[2*2+1]; ++od) {
@@ -395,16 +396,7 @@ void jit_avx512_common_pooling3D_bwd_t<data_type, acc_type>::execute_backward() 
                                 for (int ow = start_ends[2*4+0]; ow < start_ends[2*4+1]; ++ow) {
                                     const data_t *diff_dst_vec = (data_t *)&diff_dst[dst_ix.off(mb, ocb, od, oh, ow)*NBLOCK];
                                     data_t *diff_src_vec = (data_t *)&diff_src[src_ix.off(mb, ocb, od*SD, oh*SH, ow*SW)*NBLOCK];
-                                    for (int kd = 0; kd < KD; ++kd) {
-                                        for (int kh = 0; kh < KH; ++kh) {
-                                            for (int kw = 0; kw < KW; ++kw) {
-        #                                       pragma omp simd
-                                                for(size_t oc = 0; oc < NBLOCK; ++oc) {
-                                                    diff_src_vec[kd*IH*IW*NBLOCK + kh*IW*NBLOCK + kw*NBLOCK + oc] = inv_summands*diff_dst_vec[oc];
-                                                }
-                                            }
-                                        }
-                                    }
+                                    kernel_simple(diff_src_vec, diff_dst_vec);
                                 }
                             }
                         }
