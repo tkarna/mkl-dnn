@@ -632,6 +632,12 @@ int main(int argc, char **argv) {
     try {
         success = success && test_pool_simple_3d("both", pooling_avg, 4);
 
+        // kernel == stride cases
+        success = success && test_pool_3d("both", pooling_avg, {32, 32, 32}, 32, {1, 2, 3}, {1, 2, 3}, {0, 0, 0}, 1, true);
+        success = success && test_pool_3d("both", pooling_avg, {32, 32, 32}, 32, {3, 3, 3}, {3, 3, 3}, {0, 0, 0}, 1, true);
+        success = success && test_pool_3d("both", pooling_avg, {32, 32, 32}, 32, {4, 4, 4}, {4, 4, 4}, {0, 0, 0}, 1, true);
+        success = success && test_pool_3d("both", pooling_avg, {32, 32, 32}, 32, {5, 5, 5}, {5, 5, 5}, {0, 0, 0}, 1, true);
+
         // 32, 64 cubes (additional -- not in the applications)
         std::vector<int> in_sizes = {32, 64};
         std::vector<int> kernel_sizes = {2, 3};
