@@ -168,6 +168,7 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
     std::vector<primitive> net;
 
     float complexity = 2*((float)out_height)*out_width*out_depth*weights_height*weights_width*weights_depth*in_channels*out_channels;
+    float bytes = (out_height*out_width*out_depth*out_channels + in_height*in_width*in_depth*in_channels + 2*weights_height*weights_width*weights_depth*in_channels*out_channels) * sizeof(float);
 
     const int ntime = 100;
     if (src_needs_reorder) {
@@ -201,12 +202,13 @@ void time_bkw_weights_convolution(const int nbatch, const int in_channels,
     double t2 = omp_get_wtime();
     double duration = 1000*(t2 - t1)/ntime;
     float speed = complexity/1000./1000./1000./duration*1000.*nbatch;
+    float bandwidth = bytes/1000./1000./1000./duration*1000.*nbatch;
 
-    printf("bs=%2d %3dx%3dx%3d w=%dx%dx%d st=%dx%dx%d ic=%3d oc=%3d: %8.2f GFlops/s\n",
+    printf("bs=%2d %3dx%3dx%3d w=%dx%dx%d st=%dx%dx%d ic=%3d oc=%3d: %8.2f GFlops/s %8.2f GB/s\n",
         nbatch, in_height, in_width, in_depth,
         weights_height, weights_width, weights_depth,
         stride_depth, stride_height, stride_width,
-        in_channels, out_channels, speed);
+        in_channels, out_channels, speed, bandwidth);
 
 }
 

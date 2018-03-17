@@ -814,10 +814,11 @@ bool assert_bkw_weights_convolution(const int nbatch, const int in_channels,
     memory::dims dst_dims = {nbatch, out_channels, out_depth, out_height, out_width};
 
     // allocate memory
+    // initialize weights to non-zero to check kernel zeroes it appropriately
     std::vector<float> vect_diff_dst(std::accumulate(dst_dims.begin(),
         dst_dims.end(), 1, std::multiplies<uint32_t>()));
     std::vector<float> vect_diff_weights(std::accumulate(weights_dims.begin(),
-        weights_dims.end(), 1, std::multiplies<uint32_t>()));
+        weights_dims.end(), 1, std::multiplies<uint32_t>()), 1);
     std::vector<float> vect_diff_bias(std::accumulate(bias_dims.begin(),
         bias_dims.end(), 1, std::multiplies<uint32_t>()));
     std::vector<float> vect_src(std::accumulate(src_dims.begin(),
@@ -1193,6 +1194,13 @@ int main(int argc, char **argv) {
 
         // cosmoflow layers (smaller problem size)
         success = success && test_full(1, {64, 64, 64}, {3, 3, 3}, 1, 16, {1, 1, 1}, {0, 0, 0}, true);
+
+        // new 128-cube topology with 256 outputs (first 2 layers coincide)
+        success = success && test_full(1, { 30,  30,  30}, {4, 4, 4},  32,  64, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, { 13,  13,  13}, {3, 3, 3},  64, 128, {2, 2, 2}, {0, 0, 0}, true);
+        success = success && test_full(1, {  6,   6,   6}, {3, 3, 3}, 128, 256, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {  4,   4,   4}, {2, 2, 2}, 256, 256, {1, 1, 1}, {0, 0, 0}, true);
+        success = success && test_full(1, {  3,   3,   3}, {2, 2, 2}, 256, 256, {1, 1, 1}, {0, 0, 0}, true);
 
         // medical imaging layers
         // NOTE these take a while to run
